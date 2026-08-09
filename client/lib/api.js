@@ -1,0 +1,104 @@
+import axios from 'axios';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+const api = axios.create({
+  baseURL: API_BASE,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Attach JWT token to every request
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// Handle 401 responses
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth APIs
+export const authAPI = {
+  register: (data) => api.post('/auth/register', data),
+  login: (data) => api.post('/auth/login', data),
+  getMe: () => api.get('/auth/me')
+};
+
+// Goals APIs
+export const goalsAPI = {
+  create: (data) => api.post('/goals', data),
+  getAll: () => api.get('/goals'),
+  getActive: () => api.get('/goals/active'),
+  getById: (id) => api.get(`/goals/${id}`),
+  update: (id, data) => api.put(`/goals/${id}`, data),
+  delete: (id) => api.delete(`/goals/${id}`)
+};
+
+// Problems APIs
+export const problemsAPI = {
+  getAll: (params) => api.get('/problems', { params }),
+  getById: (id) => api.get(`/problems/${id}`),
+  create: (data) => api.post('/problems', data),
+  update: (id, data) => api.put(`/problems/${id}`, data),
+  delete: (id) => api.delete(`/problems/${id}`)
+};
+
+// Submissions APIs
+export const submissionsAPI = {
+  submit: (data) => api.post('/submissions', data),
+  getAll: (params) => api.get('/submissions', { params }),
+  getById: (id) => api.get(`/submissions/${id}`)
+};
+
+// Wallet APIs
+export const walletAPI = {
+  getOverview: () => api.get('/wallet'),
+  getHistory: () => api.get('/wallet/history')
+};
+
+// Withdrawals APIs
+export const withdrawalsAPI = {
+  request: (data) => api.post('/withdrawals', data),
+  getAll: () => api.get('/withdrawals'),
+  getAllAdmin: (params) => api.get('/withdrawals/admin/all', { params }),
+  approve: (id, notes) => api.put(`/withdrawals/${id}/approve`, { notes }),
+  reject: (id, notes) => api.put(`/withdrawals/${id}/reject`, { notes })
+};
+
+// Leaderboard APIs
+export const leaderboardAPI = {
+  getTop: (limit) => api.get('/leaderboard', { params: { limit } }),
+  getBadgeMeta: () => api.get('/leaderboard/badges')
+};
+
+// Ads APIs
+export const adsAPI = {
+  getByCategory: (category) => api.get('/ads', { params: { category } }),
+  getSponsoredChallenges: () => api.get('/ads/sponsored-challenges')
+};
+
+// Platform Settings APIs
+export const settingsAPI = {
+  get: () => api.get('/settings'),
+  update: (data) => api.put('/settings', data)
+};
+
+export default api;

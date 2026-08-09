@@ -1,0 +1,26 @@
+# Render.com deployment configuration for the backend server
+# Deploy at: https://dashboard.render.com → New Web Service → connect repo
+
+services:
+  - type: web
+    name: coding-reward-server
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "5000"
+      - key: MONGODB_URI
+        sync: false          # set manually in Render dashboard
+      - key: JWT_SECRET
+        generateValue: true  # Render auto-generates a secure random value
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CLIENT_URL
+        sync: false          # set to your Vercel frontend URL
