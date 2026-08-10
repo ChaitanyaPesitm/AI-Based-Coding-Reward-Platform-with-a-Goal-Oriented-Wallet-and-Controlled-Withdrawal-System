@@ -4,34 +4,43 @@ const Submission = require('../models/Submission');
 const Problem = require('../models/Problem');
 const Goal = require('../models/Goal');
 const User = require('../models/User');
-const { protect } = require('../middleware/auth');
+const ProctorSession = require('../models/ProctorSession');
+const { protect, adminOnly } = require('../middleware/auth');
 const { executeCode } = require('../services/wandbox');
 const { evaluateCode } = require('../services/gemini');
 const { calculatePoints } = require('../services/rewardEngine');
 const { analyzeCode, compareComplexity } = require('../services/complexityAnalyzer');
+const { BADGE_META } = require('../services/badges');
 
 router.use(protect);
 
 // ─── Badge definitions ────────────────────────────────────────────────────────
+// Checks read from BADGE_META for labels/descriptions (single source of truth).
 const BADGES = {
-  first_solve: { check: (u) => u.problemsSolved >= 1, label: '🥇 First Solve' },
-  problems_10: { check: (u) => u.problemsSolved >= 10, label: '🔟 10 Problems' },
-  problems_25: { check: (u) => u.problemsSolved >= 25, label: '💪 25 Problems' },
-  problems_50: { check: (u) => u.problemsSolved >= 50, label: '🏆 50 Problems' },
-  points_1000: { check: (u) => u.totalPointsEarned >= 1000, label: '💎 1K Points' },
-  points_5000: { check: (u) => u.totalPointsEarned >= 5000, label: '🌟 5K Points' },
-  points_10000: { check: (u) => u.totalPointsEarned >= 10000, label: '👑 10K Points' },
-  streak_7: { check: (u) => u.longestStreak >= 7, label: '🔥 7-Day Streak' },
-  streak_30: { check: (u) => u.longestStreak >= 30, label: '⚡ 30-Day Streak' },
+  first_solve:      { check: (u) => u.problemsSolved >= 1 },
+  problems_10:      { check: (u) => u.problemsSolved >= 10 },
+  problems_25:      { check: (u) => u.problemsSolved >= 25 },
+  problems_50:      { check: (u) => u.problemsSolved >= 50 },
+  points_1000:      { check: (u) => u.totalPointsEarned >= 1000 },
+  points_5000:      { check: (u) => u.totalPointsEarned >= 5000 },
+  points_10000:     { check: (u) => u.totalPointsEarned >= 10000 },
+  streak_7:         { check: (u) => u.longestStreak >= 7 },
+  streak_30:        { check: (u) => u.longestStreak >= 30 },
+  no_plagiarism_10: { check: (u, ctx) => ctx.cleanSubmissionCount >= 10 },
 };
 
 /**
  * Compute which new badges a user just earned, add them, and return the names.
  */
-function awardBadges(user) {
+async function awardBadges(user) {
+  const cleanSubmissionCount = await Submission.countDocuments({
+    user: user._id,
+    plagiarismFlag: { $ne: true }
+  });
+  const ctx = { cleanSubmissionCount };
   const earned = [];
   for (const [id, { check }] of Object.entries(BADGES)) {
-    if (!user.badges.includes(id) && check(user)) {
+    if (!user.badges.includes(id) && check(user, ctx)) {
       user.badges.push(id);
       earned.push(id);
     }
@@ -80,7 +89,7 @@ function updateStreak(user) {
 // POST /api/submissions - Submit code for a problem
 router.post('/', async (req, res) => {
   try {
-    const { problemId, code, language, proctorViolations = 0, proctorFlagged = false } = req.body;
+    const { problemId, code, language } = req.body;
 
     if (!problemId || !code) {
       return res.status(400).json({
@@ -104,7 +113,8 @@ router.post('/', async (req, res) => {
     // Get user's active goal
     const activeGoal = await Goal.findOne({ user: req.user._id, status: 'active' });
 
-    // Create submission record
+    // Create submission record. Proctoring data is NOT accepted from the client —
+    // it is read from the server-side proctor session below.
     const submission = await Submission.create({
       user: req.user._id,
       problem: problemId,
@@ -112,9 +122,7 @@ router.post('/', async (req, res) => {
       code,
       language: submissionLanguage,
       status: 'running',
-      totalTestCases: problem.testCases.length,
-      proctorViolations,
-      proctorFlagged
+      totalTestCases: problem.testCases.length
     });
 
     // Step 1: Execute code against test cases via Wandbox
@@ -204,7 +212,38 @@ router.post('/', async (req, res) => {
     };
     submission.plagiarismFlag = aiResult.plagiarismRisk > 70;
 
-    // Step 3: Calculate points
+    // Step 3: Server-side proctoring — read violations from the recorded session.
+    // Client-supplied proctoring values are ignored; only a session the client
+    // explicitly started (and the server recorded violations into) counts.
+    const activeSession = await ProctorSession.findOne({
+      user: req.user._id,
+      problem: problemId,
+      status: 'active'
+    }).sort({ createdAt: -1 });
+    const proctorViolations = activeSession ? activeSession.violations.length : 0;
+    const proctorFlagged = activeSession ? activeSession.flagged : false;
+    if (activeSession) {
+      activeSession.status = 'ended';
+      await activeSession.save();
+    }
+
+    // Step 4: Atomic solve claim — prevents double-awarding when two concurrent
+    // submissions for the same problem both see "alreadySolved === false".
+    // Only the first request can add the problem to solvedProblems.
+    let claim = null;
+    if (submission.status === 'accepted' && !alreadySolved) {
+      claim = await User.findOneAndUpdate(
+        { _id: req.user._id, solvedProblems: { $ne: problemId } },
+        { $addToSet: { solvedProblems: problemId } },
+        { new: true }
+      );
+      if (!claim) {
+        // A concurrent request claimed this solve first
+        alreadySolved = true;
+      }
+    }
+
+    // Step 5: Calculate points
     // No points if user already solved this problem with an accepted submission
     let points = 0;
     let breakdown = null;
@@ -227,23 +266,42 @@ router.post('/', async (req, res) => {
       };
     }
 
+    // Step 6: Proctoring penalty (0.5x) when the session was flagged
+    if (points > 0 && proctorFlagged) {
+      const penalty = Math.floor(points * 0.5);
+      points -= penalty;
+      breakdown.proctoringPenalty = `-${penalty} (flagged — ${proctorViolations} violation(s))`;
+    }
+
+    // Step 7: Load the authoritative user document once (the atomic claim result
+    // when available) so the hint bonus, awarding, and badge checks all persist
+    // consistently in a single save.
+    const freshUser = claim || await User.findById(req.user._id);
+
+    // Rewarded-ad AI hint bonus: +5%, consumed once per problem
+    if (points > 0 && freshUser) {
+      const hintIndex = (freshUser.hintUnlocks || [])
+        .findIndex(h => h.problem.toString() === problemId.toString() && !h.usedAt);
+      if (hintIndex !== -1) {
+        const hintBonus = Math.round(points * 0.05);
+        points += hintBonus;
+        breakdown.aiHintBonus = `+${hintBonus} (5% rewarded-ad AI hint bonus)`;
+        freshUser.hintUnlocks[hintIndex].usedAt = new Date();
+      }
+    }
+
     submission.pointsEarned = points;
+    submission.proctorViolations = proctorViolations;
+    submission.proctorFlagged = proctorFlagged;
     await submission.save();
 
-    // Step 4: Update user stats (only for new solves)
+    // Step 8: Update user stats (only for new solves)
     let newBadges = [];
     if (points > 0 && !alreadySolved) {
-      const freshUser = await User.findById(req.user._id);
-
       freshUser.totalPointsEarned += points;
 
       if (submission.status === 'accepted') {
         freshUser.problemsSolved += 1;
-
-        // Track solved problem to prevent double-earning
-        if (!freshUser.solvedProblems.map(id => id.toString()).includes(problemId.toString())) {
-          freshUser.solvedProblems.push(problemId);
-        }
 
         // Update daily streak
         updateStreak(freshUser);
@@ -259,7 +317,7 @@ router.post('/', async (req, res) => {
         }
       }
 
-      newBadges = awardBadges(freshUser);
+      newBadges = await awardBadges(freshUser);
       await freshUser.save();
 
       // Update active goal
@@ -272,7 +330,6 @@ router.post('/', async (req, res) => {
       }
     } else if (submission.status === 'accepted' && alreadySolved) {
       // Still update streak even on re-solve, but no points
-      const freshUser = await User.findById(req.user._id);
       updateStreak(freshUser);
       await freshUser.save();
     }
@@ -333,6 +390,44 @@ router.get('/', async (req, res) => {
     res.json({ success: true, count: submissions.length, data: submissions });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch submissions', error: error.message });
+  }
+});
+
+// GET /api/submissions/violators - Admin: list students who violated proctoring rules.
+// Must be declared BEFORE the /:id route so "violators" is not treated as an id.
+router.get('/violators', protect, adminOnly, async (req, res) => {
+  try {
+    const violators = await Submission.aggregate([
+      { $match: { proctorFlagged: true } },
+      {
+        $group: {
+          _id: '$user',
+          flaggedCount: { $sum: 1 },
+          totalViolations: { $sum: '$proctorViolations' },
+          lastFlaggedAt: { $max: '$createdAt' },
+          problems: { $addToSet: '$problem' }
+        }
+      },
+      { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+      { $unwind: '$user' },
+      { $lookup: { from: 'problems', localField: 'problems', foreignField: '_id', as: 'problemDetails' } },
+      { $sort: { lastFlaggedAt: -1 } }
+    ]);
+
+    const data = violators.map(v => ({
+      userId: v._id,
+      name: v.user.name,
+      email: v.user.email,
+      flaggedCount: v.flaggedCount,
+      totalViolations: v.totalViolations,
+      lastFlaggedAt: v.lastFlaggedAt,
+      problems: v.problemDetails.map(p => ({ title: p.title, difficulty: p.difficulty, language: p.language }))
+    }));
+
+    res.json({ success: true, count: data.length, data });
+  } catch (error) {
+    console.error('Violators fetch error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch violators', error: error.message });
   }
 });
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Problem = require('../models/Problem');
+const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
 
 // GET /api/problems - List all problems with solved status for the requesting user
@@ -32,16 +33,25 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
-// GET /api/problems/:id/hint - Get AI Hint for a problem (Requires watching rewarded ad)
-router.get('/:id/hint', protect, async (req, res) => {
+// POST /api/problems/:id/unlock-hint - Unlock a rewarded-ad AI hint.
+// The unlock is recorded server-side so the submission route can apply the
+// +5% point bonus exactly once per problem.
+router.post('/:id/unlock-hint', protect, async (req, res) => {
   try {
     const problem = await Problem.findById(req.params.id);
     if (!problem) {
       return res.status(404).json({ success: false, message: 'Problem not found' });
     }
 
-    const { evaluateCode } = require('../services/gemini');
-    // Generate AI hint based on problem description
+    const user = await User.findById(req.user._id);
+    const alreadyUnlocked = (user.hintUnlocks || [])
+      .some(h => h.problem.toString() === problem._id.toString());
+
+    if (!alreadyUnlocked) {
+      user.hintUnlocks.push({ problem: problem._id });
+      await user.save();
+    }
+
     const hintText = `Key Approach for "${problem.title}": Focus on understanding input formatting and boundary cases. Break down the problem step-by-step before writing code!`;
 
     res.json({
@@ -49,13 +59,14 @@ router.get('/:id/hint', protect, async (req, res) => {
       data: {
         problemId: problem._id,
         hint: hintText,
-        multiplierBonus: 1.05 // 5% bonus point multiplier for viewing ad
+        multiplierBonus: 1.05 // 5% bonus point multiplier, consumed on the next earning submission
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch AI hint', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to unlock AI hint', error: error.message });
   }
 });
+
 router.get('/:id', protect, async (req, res) => {
   try {
     const problem = await Problem.findById(req.params.id).select('-testCases');

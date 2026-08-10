@@ -128,16 +128,13 @@ const demoUsers = [
 
 const autoSeed = async () => {
   try {
-    // Seed users
+    // Seed users. Existing users are left untouched so any password a user has
+    // set is never clobbered on server restart.
     for (const u of demoUsers) {
-      let existing = await User.findOne({ email: u.email });
+      const existing = await User.findOne({ email: u.email });
       if (!existing) {
         await User.create(u);
         console.log(`👤 Auto-Seeded User (${u.name} - ${u.email})`);
-      } else {
-        // Update password if old password was simple
-        existing.password = u.password;
-        await existing.save();
       }
     }
 

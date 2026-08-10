@@ -399,20 +399,22 @@ const seedDB = async () => {
     await Problem.deleteMany({});
     console.log('🗑️  Cleared existing problems');
 
-    // Clear existing students (keep admin)
-    await User.deleteMany({ isAdmin: false });
-    console.log('🗑️  Cleared existing students');
+    // Clear existing seeded students only (keep admin AND any demo accounts like
+    // student@example.com that autoSeed creates on server boot)
+    const seedEmails = seedStudents.map(s => s.email);
+    await User.deleteMany({ isAdmin: false, email: { $in: seedEmails } });
+    console.log('🗑️  Cleared existing seeded students');
 
-    // Create admin user if not exists
+    // Create admin user if not exists (matches the documented demo credential)
     let admin = await User.findOne({ email: 'admin@coderward.com' });
     if (!admin) {
       admin = await User.create({
         name: 'Admin',
         email: 'admin@coderward.com',
-        password: 'admin123',
+        password: 'Admin@Code2026!',
         isAdmin: true
       });
-      console.log('👤 Admin user created (admin@coderward.com / admin123)');
+      console.log('👤 Admin user created (admin@coderward.com / Admin@Code2026!)');
     }
 
     // Seed problems

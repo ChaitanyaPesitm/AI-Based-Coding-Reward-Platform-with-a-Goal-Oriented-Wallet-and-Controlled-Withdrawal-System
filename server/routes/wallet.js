@@ -16,12 +16,16 @@ router.get('/', async (req, res) => {
     const allGoals = await Goal.find({ user: req.user._id });
 
     const totalPoints = user.totalPointsEarned;
+    const withdrawnPoints = user.withdrawnPoints || 0;
+    const availablePoints = Math.max(0, totalPoints - withdrawnPoints);
 
     res.json({
       success: true,
       data: {
         totalPoints,
-        currencyEquivalent: pointsToCurrency(totalPoints),
+        withdrawnPoints,
+        availablePoints,
+        currencyEquivalent: pointsToCurrency(availablePoints),
         problemsSolved: user.problemsSolved,
         activeGoal: activeGoal ? {
           id: activeGoal._id,

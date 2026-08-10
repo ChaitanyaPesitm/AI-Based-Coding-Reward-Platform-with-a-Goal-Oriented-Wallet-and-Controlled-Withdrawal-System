@@ -32,10 +32,7 @@ export default function SolveProblemPage() {
   const [hintUnlocked, setHintUnlocked] = useState(false);
   const [aiHintText, setAiHintText] = useState('');
 
-  // Proctoring state
-  const [proctorViolations, setProctorViolations] = useState([]);
-  const [proctorViolationCount, setProctorViolationCount] = useState(0);
-  const [proctorFlagged, setProctorFlagged] = useState(false);
+  // Proctoring state (violations are recorded server-side by the overlay)
   const [proctoringEnabled, setProctoringEnabled] = useState(true);
 
   const fetchProblem = async () => {
@@ -76,9 +73,16 @@ export default function SolveProblemPage() {
           clearInterval(interval);
           setAdWatching(false);
           setHintUnlocked(true);
-          setAiHintText(
-            `💡 AI Hint for "${problem.title}": Pay special attention to edge cases (e.g. empty input or boundary values). Break down your solution logic into distinct steps!`
-          );
+          // Record the unlock server-side so the +5% bonus is applied on the next submission
+          problemsAPI.unlockHint(params.id)
+            .then(res => {
+              setAiHintText(res.data.data?.hint || aiHintText);
+            })
+            .catch(() => {
+              setAiHintText(
+                `💡 AI Hint for "${problem.title}": Pay special attention to edge cases (e.g. empty input or boundary values). Break down your solution logic into distinct steps!`
+              );
+            });
           return 0;
         }
         return prev - 1;
@@ -94,9 +98,7 @@ export default function SolveProblemPage() {
       const res = await submissionsAPI.submit({
         problemId: params.id,
         code,
-        language: problem.language,
-        proctorViolations: proctorViolationCount,
-        proctorFlagged
+        language: problem.language
       });
       setResult(res.data.data);
     } catch (err) {
@@ -105,15 +107,6 @@ export default function SolveProblemPage() {
       });
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleProctorViolation = (violation, count) => {
-    setProctorViolations(prev => [...prev, violation]);
-    setProctorViolationCount(count);
-    // Flag if 3+ violations or any tab switch
-    if (count >= 3 || violation.type === 'tab_switch') {
-      setProctorFlagged(true);
     }
   };
 
@@ -406,7 +399,6 @@ export default function SolveProblemPage() {
       {/* Proctoring Overlay */}
       <ProctoringOverlay
         problemId={params.id}
-        onViolation={handleProctorViolation}
         enabled={proctoringEnabled}
       />
 

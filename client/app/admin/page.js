@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { problemsAPI, withdrawalsAPI, settingsAPI } from '@/lib/api';
+import { problemsAPI, withdrawalsAPI, settingsAPI, submissionsAPI } from '@/lib/api';
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -10,6 +10,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState('problems');
   const [problems, setProblems] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
+  const [violators, setViolators] = useState([]);
   const [proctoringEnabled, setProctoringEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [showAddProblem, setShowAddProblem] = useState(false);
@@ -22,14 +23,16 @@ export default function AdminPage() {
 
   const fetchData = async () => {
     try {
-      const [probRes, wdRes, settingsRes] = await Promise.all([
+      const [probRes, wdRes, settingsRes, violRes] = await Promise.all([
         problemsAPI.getAll(),
         withdrawalsAPI.getAllAdmin({}).catch(() => ({ data: { data: [] } })),
-        settingsAPI.get().catch(() => ({ data: { data: { proctoringEnabled: true } } }))
+        settingsAPI.get().catch(() => ({ data: { data: { proctoringEnabled: true } } })),
+        submissionsAPI.getViolators().catch(() => ({ data: { data: [] } }))
       ]);
       setProblems(probRes.data.data);
       setWithdrawals(wdRes.data.data);
       setProctoringEnabled(settingsRes.data.data?.proctoringEnabled !== false);
+      setViolators(violRes.data.data);
     } catch (err) {
       console.error('Admin fetch error:', err);
     } finally {
@@ -142,8 +145,8 @@ export default function AdminPage() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px' }}>
-          {['problems', 'withdrawals', 'settings'].map(t => (
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', flexWrap: 'wrap' }}>
+          {['problems', 'withdrawals', 'violators', 'settings'].map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -160,7 +163,7 @@ export default function AdminPage() {
                 textTransform: 'capitalize'
               }}
             >
-              {t === 'problems' ? '💻 ' : t === 'settings' ? '⚙️ ' : '📋 '}{t}
+              {t === 'problems' ? '💻 ' : t === 'withdrawals' ? '📋 ' : t === 'violators' ? '🛡️ ' : '⚙️ '}{t}
               {t === 'withdrawals' && withdrawals.filter(w => w.status === 'pending' || w.status === 'verified').length > 0 && (
                 <span style={{
                   marginLeft: '6px',
@@ -171,6 +174,18 @@ export default function AdminPage() {
                   fontSize: '0.7rem'
                 }}>
                   {withdrawals.filter(w => w.status === 'pending' || w.status === 'verified').length}
+                </span>
+              )}
+              {t === 'violators' && violators.length > 0 && (
+                <span style={{
+                  marginLeft: '6px',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  background: 'var(--hard)',
+                  color: 'white',
+                  fontSize: '0.7rem'
+                }}>
+                  {violators.length}
                 </span>
               )}
             </button>
@@ -284,6 +299,69 @@ export default function AdminPage() {
             ) : (
               <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                 No withdrawal requests yet.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Violators Tab */}
+        {tab === 'violators' && (
+          <div className="animate-fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 style={{ fontWeight: 700 }}>🛡️ Proctoring Violators</h3>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Students with submissions flagged for tab-switching, copy/paste, shortcuts, or idle time
+              </span>
+            </div>
+
+            {violators.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {violators.map(v => (
+                  <div key={v.userId} className="glass-card" style={{ padding: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ flex: 1, minWidth: '220px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '1rem' }}>{v.name}</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>{v.email}</div>
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '10px' }}>
+                          <span className="badge" style={{
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            color: 'var(--hard)',
+                            fontWeight: 700
+                          }}>
+                            ⚠️ {v.flaggedCount} flagged submission{v.flaggedCount !== 1 ? 's' : ''}
+                          </span>
+                          <span className="badge" style={{ background: 'var(--bg-secondary)', color: 'var(--medium)' }}>
+                            🚫 {v.totalViolations} violation{v.totalViolations !== 1 ? 's' : ''}
+                          </span>
+                          <span className="badge" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                            📅 {new Date(v.lastFlaggedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        {v.problems && v.problems.length > 0 && (
+                          <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {v.problems.map((p, i) => (
+                              <span key={i} style={{
+                                fontSize: '0.72rem',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                background: 'var(--bg-secondary)',
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border-subtle)'
+                              }}>
+                                {p.title} <span className={`badge-lang badge-${p.language}`}>{p.language}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '2.5rem' }}>🛡️</span>
+                <p style={{ marginTop: '10px' }}>No proctoring violations recorded yet.</p>
               </div>
             )}
           </div>

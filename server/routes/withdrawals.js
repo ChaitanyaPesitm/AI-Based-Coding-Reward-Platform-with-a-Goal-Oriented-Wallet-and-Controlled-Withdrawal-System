@@ -139,6 +139,9 @@ router.put('/:id/approve', adminOnly, async (req, res) => {
     withdrawal.adminNotes = req.body.notes || 'Approved by admin';
     await withdrawal.save();
 
+    // Deduct the approved points from the user's available balance
+    await User.findByIdAndUpdate(withdrawal.user, { $inc: { withdrawnPoints: withdrawal.pointsAmount } });
+
     // Emit real-time notification via Socket.io
     const { sendUserNotification } = require('../services/socket');
     sendUserNotification(withdrawal.user, 'withdrawal_updated', {

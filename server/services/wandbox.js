@@ -45,41 +45,64 @@ const executeWithWandbox = async (sourceCode, language, testCases) => {
             const expected = testCase.expectedOutput.trim();
 
             // Check for compilation error
-            if (res.status === '1' && !stdout) {
+            const isCompileError = Number(res.status) === 1 && !stdout;
+            if (isCompileError) {
                 compilationError = res.compiler_error || res.compiler_message || 'Compilation error';
             }
 
+            // Runtime error: Wandbox reports it via program_error / program_message
+            const isRuntimeError = !isCompileError && (res.program_error || res.program_message || (stderr && !stdout));
+
+            // Time limit exceeded: submission ran at or above the 2s threshold
+            const parsedTime = typeof res.time === 'string' ? parseFloat(res.time) : (res.time || 0);
+            const isTLE = parsedTime >= 2;
+
             const isMatch = stdout === expected;
             if (isMatch) passed++;
+
+            let status, statusId;
+            if (isMatch) {
+                status = 'Accepted';
+                statusId = 3;
+            } else if (isCompileError) {
+                status = 'Compilation Error';
+                statusId = 6;
+            } else if (isTLE) {
+                status = 'Time Limit Exceeded';
+                statusId = 5;
+            } else if (isRuntimeError) {
+                status = 'Runtime Error';
+                statusId = 8;
+            } else {
+                status = 'Wrong Answer';
+                statusId = 4;
+            }
 
             results.push({
                 input: testCase.input,
                 expectedOutput: testCase.expectedOutput,
                 actualOutput: stdout || (stderr ? `Error: ${stderr}` : ''),
-                status: isMatch ? 'Accepted' : compilationError ? 'Compilation Error' : stderr ? 'Runtime Error' : 'Wrong Answer',
-                statusId: isMatch ? 3 : compilationError ? 6 : 4,
+                status,
+                statusId,
                 time: res.time || '0.05',
                 memory: res.memory || 2048,
                 passed: isMatch,
                 error: stderr
             });
         } catch (err) {
-            console.warn(`Wandbox execution fallback: ${err.message}`);
-            // Instant fallback simulation for this test case
-            const code = sourceCode.toLowerCase();
-            const hasCodeContent = code.length > 20 && !code.includes('write your code here');
-            const isMatch = hasCodeContent;
-            if (isMatch) passed++;
-
+            // Wandbox is unreachable or timed out. NEVER fabricate a pass —
+            // the test case is a hard failure so no points can be earned fraudulently.
+            console.warn(`Wandbox execution failed for test case: ${err.message}`);
             results.push({
                 input: testCase.input,
                 expectedOutput: testCase.expectedOutput,
-                actualOutput: isMatch ? testCase.expectedOutput : 'Execution error',
-                status: isMatch ? 'Accepted' : 'Wrong Answer',
-                statusId: isMatch ? 3 : 4,
-                time: '0.02',
-                memory: 1024,
-                passed: isMatch
+                actualOutput: `Execution error: ${err.message}`,
+                status: 'Execution Error',
+                statusId: 8,
+                time: 0,
+                memory: 0,
+                passed: false,
+                error: err.message
             });
         }
     }

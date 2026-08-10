@@ -90,4 +90,8 @@ const submissionSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Hot queries: per-user history, per-user fraud checks
+submissionSchema.index({ user: 1, createdAt: -1 });
+submissionSchema.index({ user: 1, plagiarismFlag: 1 });
+
 module.exports = mongoose.model('Submission', submissionSchema);

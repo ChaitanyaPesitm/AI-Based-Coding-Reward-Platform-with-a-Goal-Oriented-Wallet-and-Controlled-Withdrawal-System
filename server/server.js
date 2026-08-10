@@ -25,6 +25,21 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+// Never leak internal error details (error.message) to clients in production.
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode >= 500 && body && typeof body === 'object' &&
+        Object.prototype.hasOwnProperty.call(body, 'error')) {
+      const sanitized = { ...body };
+      delete sanitized.error;
+      body = sanitized;
+    }
+    return originalJson(body);
+  };
+  next();
+});
+
 // Global rate limiter (120 req/min per IP)
 app.use('/api/', apiLimiter);
 
@@ -32,6 +47,7 @@ app.use('/api/', apiLimiter);
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/goals', require('./routes/goals'));
 app.use('/api/problems', require('./routes/problems'));
+app.use('/api/proctor', require('./routes/proctor'));
 app.use('/api/submissions', submissionLimiter, require('./routes/submissions'));
 app.use('/api/wallet', require('./routes/wallet'));
 app.use('/api/withdrawals', require('./routes/withdrawals'));

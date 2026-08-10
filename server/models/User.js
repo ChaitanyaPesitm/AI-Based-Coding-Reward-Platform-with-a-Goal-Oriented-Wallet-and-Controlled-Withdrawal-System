@@ -41,6 +41,16 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Problem'
   }],
+  // Points already paid out through approved withdrawals
+  withdrawnPoints: {
+    type: Number,
+    default: 0
+  },
+  // Rewarded-ad AI hint unlocks (each problem can be used once for +5% bonus)
+  hintUnlocks: [{
+    problem: { type: mongoose.Schema.Types.ObjectId, ref: 'Problem' },
+    usedAt: { type: Date, default: null }
+  }],
   // Gamification: badges earned
   badges: [{
     type: String,
@@ -73,6 +83,9 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// Leaderboard sorts by total points; withdraw check sums withdrawn points
+userSchema.index({ totalPointsEarned: -1 });
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {

@@ -2,19 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-
-const BADGE_META = {
-  first_solve:      { label: '🥇 First Solve',    description: 'Solved your first problem' },
-  problems_10:      { label: '🔟 10 Problems',     description: 'Solved 10 problems' },
-  problems_25:      { label: '💪 25 Problems',     description: 'Solved 25 problems' },
-  problems_50:      { label: '🏆 50 Problems',     description: 'Solved 50 problems' },
-  points_1000:      { label: '💎 1K Points',       description: 'Earned 1,000 points' },
-  points_5000:      { label: '🌟 5K Points',       description: 'Earned 5,000 points' },
-  points_10000:     { label: '👑 10K Points',      description: 'Earned 10,000 points' },
-  streak_7:         { label: '🔥 7-Day Streak',    description: 'Maintained a 7-day activity streak' },
-  streak_30:        { label: '⚡ 30-Day Streak',   description: 'Maintained a 30-day activity streak' },
-  no_plagiarism_10: { label: '✨ Clean Coder',      description: '10 submissions with no plagiarism flag' }
-};
+const { BADGE_META } = require('../services/badges');
 
 // GET /api/leaderboard - Top 20 users by total points
 router.get('/', protect, async (req, res) => {

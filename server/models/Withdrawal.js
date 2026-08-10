@@ -56,4 +56,8 @@ const withdrawalSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Per-user history and admin status filtering
+withdrawalSchema.index({ user: 1, status: 1 });
+withdrawalSchema.index({ status: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Withdrawal', withdrawalSchema);

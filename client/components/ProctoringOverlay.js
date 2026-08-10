@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { proctorAPI } from '@/lib/api';
 
 /**
  * ProctoringOverlay - Monitors user activity during problem solving to prevent cheating
@@ -8,6 +9,9 @@ import { useState, useEffect, useRef } from 'react';
  * - Detects right-click
  * - Tracks time spent away
  * - Shows warnings and can flag submissions
+ *
+ * Every violation is reported to the server and stored on a ProctorSession, so the
+ * submission route can read the authoritative count instead of trusting the client.
  */
 export default function ProctoringOverlay({ problemId, onViolation, enabled = true }) {
     const [violations, setViolations] = useState([]);
@@ -24,6 +28,16 @@ export default function ProctoringOverlay({ problemId, onViolation, enabled = tr
     const awayTimerRef = useRef(null);
     const lastActivityRef = useRef(null);
     const proctorStartedRef = useRef(false);
+    const sessionIdRef = useRef(null);
+
+    // End the server-side session if the user leaves the page without submitting
+    useEffect(() => {
+        return () => {
+            if (sessionIdRef.current) {
+                proctorAPI.end(sessionIdRef.current).catch(() => {});
+            }
+        };
+    }, []);
 
     // Start proctoring session
     const startProctoring = () => {
@@ -35,6 +49,15 @@ export default function ProctoringOverlay({ problemId, onViolation, enabled = tr
         setAwayTime(0);
         setIsAway(false);
         awayStartRef.current = null;
+
+        // Register a server-side session so violations are recorded server-side
+        proctorAPI.start(problemId)
+            .then(res => {
+                sessionIdRef.current = res.data?.data?.session?._id || null;
+            })
+            .catch(() => {
+                sessionIdRef.current = null;
+            });
     };
 
     // Add a violation
@@ -56,6 +79,11 @@ export default function ProctoringOverlay({ problemId, onViolation, enabled = tr
         // Notify parent
         if (onViolation) {
             onViolation(violation, violationsRef.current.length);
+        }
+
+        // Record the violation server-side
+        if (sessionIdRef.current) {
+            proctorAPI.violation(sessionIdRef.current, type, message).catch(() => {});
         }
     };
 

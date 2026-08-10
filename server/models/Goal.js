@@ -56,4 +56,7 @@ goalSchema.virtual('currencyEquivalent').get(function() {
 goalSchema.set('toJSON', { virtuals: true });
 goalSchema.set('toObject', { virtuals: true });
 
+// Active-goal lookups by user
+goalSchema.index({ user: 1, status: 1 });
+
 module.exports = mongoose.model('Goal', goalSchema);

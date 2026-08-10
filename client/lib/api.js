@@ -58,14 +58,16 @@ export const problemsAPI = {
   getById: (id) => api.get(`/problems/${id}`),
   create: (data) => api.post('/problems', data),
   update: (id, data) => api.put(`/problems/${id}`, data),
-  delete: (id) => api.delete(`/problems/${id}`)
+  delete: (id) => api.delete(`/problems/${id}`),
+  unlockHint: (id) => api.post(`/problems/${id}/unlock-hint`)
 };
 
 // Submissions APIs
 export const submissionsAPI = {
   submit: (data) => api.post('/submissions', data),
   getAll: (params) => api.get('/submissions', { params }),
-  getById: (id) => api.get(`/submissions/${id}`)
+  getById: (id) => api.get(`/submissions/${id}`),
+  getViolators: () => api.get('/submissions/violators')
 };
 
 // Wallet APIs
@@ -99,6 +101,13 @@ export const adsAPI = {
 export const settingsAPI = {
   get: () => api.get('/settings'),
   update: (data) => api.put('/settings', data)
+};
+
+// Proctoring APIs — violations are recorded server-side, never trusted from the client
+export const proctorAPI = {
+  start: (problemId) => api.post('/proctor/start', { problemId }),
+  violation: (sessionId, type, message) => api.post('/proctor/violation', { sessionId, type, message }),
+  end: (sessionId) => api.post('/proctor/end', { sessionId })
 };
 
 export default api;
