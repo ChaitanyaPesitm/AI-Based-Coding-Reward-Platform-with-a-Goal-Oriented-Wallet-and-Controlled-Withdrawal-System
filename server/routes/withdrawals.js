@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 const Withdrawal = require('../models/Withdrawal');
 const Goal = require('../models/Goal');
-const Submission = require('../models/Submission');
+const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
 const { pointsToCurrency } = require('../services/rewardEngine');
+const { runFraudCheck } = require('../services/fraud');
+const { recordTransaction } = require('../services/ledger');
 
 router.use(protect);
 
@@ -142,6 +144,17 @@ router.put('/:id/approve', adminOnly, async (req, res) => {
     // Deduct the approved points from the user's available balance
     await User.findByIdAndUpdate(withdrawal.user, { $inc: { withdrawnPoints: withdrawal.pointsAmount } });
 
+    // Reward ledger: journal the spend so the user's balance stays auditable
+    await recordTransaction({
+      user: withdrawal.user,
+      type: 'spend',
+      amount: -withdrawal.pointsAmount,
+      source: 'withdrawal',
+      reference: { model: 'Withdrawal', id: withdrawal._id },
+      description: `Withdrawn ${withdrawal.pointsAmount} pts (₹${withdrawal.currencyAmount})`,
+      metadata: { goal: withdrawal.goal, currencyAmount: withdrawal.currencyAmount }
+    }).catch(err => console.error('Ledger spend write failed:', err.message));
+
     // Emit real-time notification via Socket.io
     const { sendUserNotification } = require('../services/socket');
     sendUserNotification(withdrawal.user, 'withdrawal_updated', {
@@ -203,55 +216,9 @@ router.put('/:id/reject', adminOnly, async (req, res) => {
 });
 
 /**
- * Fraud Detection Check
- * Analyzes user's submissions for suspicious patterns
+ * Fraud detection now lives in services/fraud.js (transparent signal breakdown).
+ * runFraudCheck(userId) returns { score, level, reasons, plagiarismCount,
+ * rapidSubmissions, notes } — used above when a withdrawal is requested.
  */
-async function runFraudCheck(userId, goalId) {
-  let score = 0;
-  let notes = [];
-
-  // Check 1: Plagiarism flags on submissions
-  const flaggedSubmissions = await Submission.countDocuments({
-    user: userId,
-    plagiarismFlag: true
-  });
-
-  if (flaggedSubmissions > 0) {
-    score += flaggedSubmissions * 15;
-    notes.push(`${flaggedSubmissions} submission(s) flagged for plagiarism`);
-  }
-
-  // Check 2: Rapid submissions (more than 10 in 1 hour)
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recentSubmissions = await Submission.countDocuments({
-    user: userId,
-    createdAt: { $gte: oneHourAgo }
-  });
-
-  const rapidSubmissions = recentSubmissions > 10;
-  if (rapidSubmissions) {
-    score += 20;
-    notes.push(`${recentSubmissions} submissions in the last hour (suspicious rate)`);
-  }
-
-  // Check 3: Very high acceptance rate (might indicate test case knowledge)
-  const totalSubmissions = await Submission.countDocuments({ user: userId });
-  const acceptedSubmissions = await Submission.countDocuments({
-    user: userId,
-    status: 'accepted'
-  });
-
-  if (totalSubmissions > 5 && acceptedSubmissions / totalSubmissions > 0.95) {
-    score += 10;
-    notes.push(`Unusually high acceptance rate: ${Math.round(acceptedSubmissions / totalSubmissions * 100)}%`);
-  }
-
-  return {
-    score: Math.min(100, score),
-    plagiarismCount: flaggedSubmissions,
-    rapidSubmissions,
-    notes: notes.join('; ') || 'No suspicious patterns detected'
-  };
-}
 
 module.exports = router;

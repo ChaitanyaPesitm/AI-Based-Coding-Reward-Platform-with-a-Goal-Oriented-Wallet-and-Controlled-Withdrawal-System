@@ -457,6 +457,8 @@ function ResultPanel({ result }) {
           </h4>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
             Test Cases: {sub?.testCasesPassed}/{sub?.totalTestCases} passed
+            {sub?.executionTime > 0 && <span style={{ marginLeft: '10px' }}>⏱️ Avg exec: {sub.executionTime}ms</span>}
+            {sub?.proctorFlagged && <span style={{ marginLeft: '10px', color: 'var(--hard)' }}>🛡️ {sub.proctorViolations} proctor violation(s)</span>}
           </p>
         </div>
         <div style={{ textAlign: 'right' }}>

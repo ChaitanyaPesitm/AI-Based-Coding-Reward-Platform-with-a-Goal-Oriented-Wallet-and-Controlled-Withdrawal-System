@@ -67,7 +67,8 @@ export const submissionsAPI = {
   submit: (data) => api.post('/submissions', data),
   getAll: (params) => api.get('/submissions', { params }),
   getById: (id) => api.get(`/submissions/${id}`),
-  getViolators: () => api.get('/submissions/violators')
+  getViolators: () => api.get('/submissions/violators'),
+  getAnalytics: () => api.get('/submissions/analytics')
 };
 
 // Wallet APIs
@@ -108,6 +109,27 @@ export const proctorAPI = {
   start: (problemId) => api.post('/proctor/start', { problemId }),
   violation: (sessionId, type, message) => api.post('/proctor/violation', { sessionId, type, message }),
   end: (sessionId) => api.post('/proctor/end', { sessionId })
+};
+
+// AI personalized learning + adaptive difficulty
+export const recommendationsAPI = {
+  get: () => api.get('/recommendations')
+};
+
+// Fraud engine — transparent score + reasons, admin review
+export const fraudAPI = {
+  getMyScore: () => api.get('/fraud/my-score'),
+  getCases: (params) => api.get('/fraud/cases', { params }),
+  scan: () => api.post('/fraud/scan'),
+  review: (id, data) => api.put(`/fraud/cases/${id}/review`, data),
+  validate: (id) => api.post(`/fraud/cases/${id}/validate`)
+};
+
+// Admin analytics + reward ledger audit
+export const adminAPI = {
+  getAnalytics: () => api.get('/admin/analytics'),
+  getLedger: (params) => api.get('/admin/ledger', { params }),
+  adjustPoints: (data) => api.post('/admin/ledger/adjust', data)
 };
 
 export default api;

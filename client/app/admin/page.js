@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { problemsAPI, withdrawalsAPI, settingsAPI, submissionsAPI } from '@/lib/api';
+import { problemsAPI, withdrawalsAPI, settingsAPI, submissionsAPI, adminAPI, fraudAPI } from '@/lib/api';
+import LedgerTable from '@/components/LedgerTable';
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -11,6 +12,8 @@ export default function AdminPage() {
   const [problems, setProblems] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
   const [violators, setViolators] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+  const [fraudCases, setFraudCases] = useState([]);
   const [proctoringEnabled, setProctoringEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [showAddProblem, setShowAddProblem] = useState(false);
@@ -23,16 +26,20 @@ export default function AdminPage() {
 
   const fetchData = async () => {
     try {
-      const [probRes, wdRes, settingsRes, violRes] = await Promise.all([
+      const [probRes, wdRes, settingsRes, violRes, anaRes, fraudRes] = await Promise.all([
         problemsAPI.getAll(),
         withdrawalsAPI.getAllAdmin({}).catch(() => ({ data: { data: [] } })),
         settingsAPI.get().catch(() => ({ data: { data: { proctoringEnabled: true } } })),
-        submissionsAPI.getViolators().catch(() => ({ data: { data: [] } }))
+        submissionsAPI.getViolators().catch(() => ({ data: { data: [] } })),
+        adminAPI.getAnalytics().catch(() => ({ data: { data: null } })),
+        fraudAPI.getCases({}).catch(() => ({ data: { data: [] } }))
       ]);
       setProblems(probRes.data.data);
       setWithdrawals(wdRes.data.data);
       setProctoringEnabled(settingsRes.data.data?.proctoringEnabled !== false);
       setViolators(violRes.data.data);
+      setAnalytics(anaRes.data.data);
+      setFraudCases(fraudRes.data.data);
     } catch (err) {
       console.error('Admin fetch error:', err);
     } finally {
@@ -122,6 +129,36 @@ export default function AdminPage() {
     }
   };
 
+  const handleFraudScan = async () => {
+    try {
+      await fraudAPI.scan();
+      const res = await fraudAPI.getCases({});
+      setFraudCases(res.data.data);
+    } catch (err) {
+      console.error('Fraud scan failed:', err);
+    }
+  };
+
+  const handleFraudReview = async (id, status, notes) => {
+    try {
+      await fraudAPI.review(id, { status, notes });
+      const res = await fraudAPI.getCases({});
+      setFraudCases(res.data.data);
+    } catch (err) {
+      console.error('Fraud review failed:', err);
+    }
+  };
+
+  const handleAdjustPoints = async (userId, amount, reason) => {
+    if (!amount || !reason) return;
+    try {
+      await adminAPI.adjustPoints({ userId, amount: parseInt(amount), reason });
+      fetchData();
+    } catch (err) {
+      console.error('Adjustment failed:', err);
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)' }}>
@@ -146,7 +183,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          {['problems', 'withdrawals', 'violators', 'settings'].map(t => (
+          {['problems', 'withdrawals', 'analytics', 'fraud', 'violators', 'settings'].map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -163,7 +200,7 @@ export default function AdminPage() {
                 textTransform: 'capitalize'
               }}
             >
-              {t === 'problems' ? '💻 ' : t === 'withdrawals' ? '📋 ' : t === 'violators' ? '🛡️ ' : '⚙️ '}{t}
+              {t === 'problems' ? '💻 ' : t === 'withdrawals' ? '📋 ' : t === 'analytics' ? '📊 ' : t === 'fraud' ? '🔍 ' : t === 'violators' ? '🛡️ ' : '⚙️ '}{t}
               {t === 'withdrawals' && withdrawals.filter(w => w.status === 'pending' || w.status === 'verified').length > 0 && (
                 <span style={{
                   marginLeft: '6px',
@@ -186,6 +223,18 @@ export default function AdminPage() {
                   fontSize: '0.7rem'
                 }}>
                   {violators.length}
+                </span>
+              )}
+              {t === 'fraud' && fraudCases.filter(f => f.status === 'open' || f.status === 'flagged').length > 0 && (
+                <span style={{
+                  marginLeft: '6px',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  background: 'var(--hard)',
+                  color: 'white',
+                  fontSize: '0.7rem'
+                }}>
+                  {fraudCases.filter(f => f.status === 'open' || f.status === 'flagged').length}
                 </span>
               )}
             </button>
@@ -362,6 +411,211 @@ export default function AdminPage() {
               <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                 <span style={{ fontSize: '2.5rem' }}>🛡️</span>
                 <p style={{ marginTop: '10px' }}>No proctoring violations recorded yet.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Analytics Tab */}
+        {tab === 'analytics' && (
+          <div className="animate-fade-in">
+            {analytics ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* Summary stat cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+                  <div className="stat-card">
+                    <span className="stat-label">👥 Users</span>
+                    <span className="stat-value">{analytics.users?.total}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{analytics.users?.newToday} today</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">📝 Submissions</span>
+                    <span className="stat-value">{analytics.submissions?.total}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{analytics.submissions?.today} today</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">✅ Acceptance Rate</span>
+                    <span className="stat-value" style={{ color: 'var(--easy)' }}>{analytics.submissions?.acceptanceRate}%</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{analytics.submissions?.accepted} accepted</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">💎 Points Distributed</span>
+                    <span className="stat-value gradient-text">{analytics.points?.distributed?.toLocaleString()}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{analytics.points?.last7dEarned?.toLocaleString()} last 7d</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">💸 Withdrawn</span>
+                    <span className="stat-value" style={{ color: 'var(--medium)' }}>{analytics.points?.withdrawn?.toLocaleString()}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{analytics.withdrawals?.pending} pending, {analytics.withdrawals?.verified} verified</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">🤖 AI Failures</span>
+                    <span className="stat-value" style={{ color: analytics.submissions?.aiFailures > 0 ? 'var(--hard)' : 'var(--easy)' }}>{analytics.submissions?.aiFailures}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>tests passed but no AI score</span>
+                  </div>
+                </div>
+
+                {/* 14-day series */}
+                {analytics.series?.submissions?.length > 0 && (
+                  <div className="glass-card" style={{ padding: '20px' }}>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>📈 Activity (last 14 days)</h3>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '120px', padding: '8px', background: 'var(--bg-secondary)', borderRadius: '10px', overflowX: 'auto' }}>
+                      {analytics.series.submissions.map((d, i) => {
+                        const max = Math.max(1, ...analytics.series.submissions.map(x => x.count));
+                        const pts = analytics.series.points[i]?.pts || 0;
+                        return (
+                          <div key={d.date} title={`${d.date}: ${d.count} submissions, ${pts} pts`} style={{ flex: '1 0 auto', minWidth: '18px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', alignItems: 'center', gap: '2px' }}>
+                            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{d.count}</div>
+                            <div style={{
+                              width: '100%', borderRadius: '4px 4px 0 0',
+                              height: `${Math.max(4, (d.count / max) * 100)}%`,
+                              background: 'var(--accent-primary)'
+                            }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Most solved + most difficult */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                  <div className="glass-card" style={{ padding: '20px' }}>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>🏆 Most Solved</h3>
+                    {analytics.mostSolved?.length ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {analytics.mostSolved.map(p => {
+                          const max = Math.max(1, ...analytics.mostSolved.map(x => x.accepted));
+                          return (
+                            <div key={p._id}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '4px' }}>
+                                <span style={{ fontWeight: 600 }}>{p.title}</span>
+                                <span style={{ color: 'var(--text-muted)' }}>{p.accepted} solves</span>
+                              </div>
+                              <div className="progress-bar-bg">
+                                <div className="progress-bar-fill" style={{ width: `${(p.accepted / max) * 100}%`, background: 'var(--easy)' }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No solves yet</p>}
+                  </div>
+
+                  <div className="glass-card" style={{ padding: '20px' }}>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>🥵 Most Difficult</h3>
+                    {analytics.mostDifficult?.length ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {analytics.mostDifficult.map(p => (
+                          <div key={p._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
+                            <span style={{ fontWeight: 600 }}>{p.title}</span>
+                            <span>
+                              <span style={{ color: 'var(--hard)', fontWeight: 700 }}>{Math.round(p.acceptRate)}%</span>
+                              <span style={{ color: 'var(--text-muted)' }}> ({p.accepted}/{p.attempts})</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Not enough data</p>}
+                  </div>
+                </div>
+
+                {/* Ledger audit */}
+                <div className="glass-card" style={{ padding: '20px' }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>🧾 Reward Ledger (latest entries)</h3>
+                  <LedgerTable />
+                </div>
+              </div>
+            ) : (
+              <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '2.5rem' }}>📊</span>
+                <p style={{ marginTop: '10px' }}>Analytics unavailable.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Fraud Tab */}
+        {tab === 'fraud' && (
+          <div className="animate-fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 style={{ fontWeight: 700 }}>🔍 Fraud Cases</h3>
+              <button className="btn-secondary" onClick={handleFraudScan} style={{ padding: '8px 20px', fontSize: '0.85rem' }}>
+                🔄 Rescan All Users
+              </button>
+            </div>
+
+            {fraudCases.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {fraudCases.map(c => (
+                  <div key={c._id} className="glass-card" style={{ padding: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ flex: 1, minWidth: '220px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 700, fontSize: '1rem' }}>{c.user?.name || 'User'}</span>
+                          <span className={`badge ${c.level === 'clean' ? 'badge-easy' : c.level === 'attention' ? 'badge-medium' : 'badge-hard'}`} style={{ textTransform: 'capitalize' }}>
+                            {c.level}
+                          </span>
+                          <span className="badge" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+                            {c.status}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          {c.user?.email} • {c.user?.problemsSolved} solved • {c.user?.totalPointsEarned} pts
+                        </div>
+                        {c.reasons?.length > 0 && (
+                          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {c.reasons.filter(r => r.points > 0).map((r, i) => (
+                              <div key={i} style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                <span>{r.detail}</span>
+                                <span style={{ fontWeight: 800, color: 'var(--hard)', whiteSpace: 'nowrap' }}>+{r.points}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {c.adminNotes && (
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>📝 {c.adminNotes}</div>
+                        )}
+                      </div>
+
+                      {/* Fraud score dial */}
+                      <div style={{ position: 'relative', width: '72px', height: '72px', flexShrink: 0 }}>
+                        <svg viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)', width: '72px', height: '72px' }}>
+                          <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--bg-secondary)" strokeWidth="3.6" />
+                          <circle
+                            cx="18" cy="18" r="15.9" fill="none"
+                            stroke={c.score >= 50 ? 'var(--hard)' : c.score >= 25 ? '#f59e0b' : 'var(--easy)'}
+                            strokeWidth="3.6" strokeDasharray={`${c.score} 100`} strokeLinecap="round"
+                          />
+                        </svg>
+                        <div style={{ position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.1rem' }}>
+                          {c.score}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Review actions */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
+                      <button className="btn-primary" style={{ padding: '6px 14px', fontSize: '0.78rem' }} onClick={() => handleFraudReview(c._id, 'cleared', 'Reviewed — cleared by admin')}>
+                        ✅ Clear
+                      </button>
+                      <button className="btn-secondary" style={{ padding: '6px 14px', fontSize: '0.78rem' }} onClick={() => handleFraudReview(c._id, 'reviewed', 'Reviewed — keeping an eye on account')}>
+                        👁️ Mark Reviewed
+                      </button>
+                      <button style={{
+                        padding: '6px 14px', fontSize: '0.78rem', borderRadius: '8px', border: 'none',
+                        background: 'rgba(239, 68, 68, 0.15)', color: 'var(--hard)', fontWeight: 600, cursor: 'pointer'
+                      }} onClick={() => handleFraudReview(c._id, 'flagged', 'Confirmed fraud — flagged for penalty')}>
+                        🚩 Flag as Fraud
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '2.5rem' }}>🔍</span>
+                <p style={{ marginTop: '10px' }}>No fraud cases yet. Run a scan to evaluate all users.</p>
               </div>
             )}
           </div>

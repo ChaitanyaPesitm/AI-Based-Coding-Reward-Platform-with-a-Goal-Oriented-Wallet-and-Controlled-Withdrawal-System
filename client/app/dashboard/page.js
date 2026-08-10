@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { walletAPI, goalsAPI, submissionsAPI, authAPI } from '@/lib/api';
+import { walletAPI, goalsAPI, submissionsAPI, authAPI, recommendationsAPI, fraudAPI } from '@/lib/api';
 import GoalAd from '@/components/GoalAd';
 import Link from 'next/link';
 
@@ -26,6 +26,9 @@ export default function DashboardPage() {
   const [goals, setGoals] = useState([]);
   const [recentSubs, setRecentSubs] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [recommendations, setRecommendations] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
+  const [fraudScore, setFraudScore] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [goalForm, setGoalForm] = useState({ title: '', description: '', category: 'laptop', targetAmount: 5000 });
@@ -33,16 +36,22 @@ export default function DashboardPage() {
 
   const fetchData = async () => {
     try {
-      const [walletRes, goalsRes, subsRes, meRes] = await Promise.all([
+      const [walletRes, goalsRes, subsRes, meRes, recRes, anaRes, fraudRes] = await Promise.all([
         walletAPI.getOverview(),
         goalsAPI.getAll(),
         submissionsAPI.getAll({ limit: 5 }),
-        authAPI.getMe()
+        authAPI.getMe(),
+        recommendationsAPI.get().catch(() => ({ data: { data: null } })),
+        submissionsAPI.getAnalytics().catch(() => ({ data: { data: null } })),
+        fraudAPI.getMyScore().catch(() => ({ data: { data: null } }))
       ]);
       setWallet(walletRes.data.data);
       setGoals(goalsRes.data.data);
       setRecentSubs(subsRes.data.data);
       setProfile(meRes.data.data);
+      setRecommendations(recRes.data.data);
+      setAnalytics(anaRes.data.data);
+      setFraudScore(fraudRes.data.data);
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
     } finally {
@@ -301,6 +310,7 @@ export default function DashboardPage() {
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                         <span className={`badge-lang badge-${sub.language}`}>{sub.language}</span>
                         {' '}• {sub.testCasesPassed}/{sub.totalTestCases} passed
+                        {sub.executionTime > 0 && <> • ⏱ {sub.executionTime}ms</>}
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -323,6 +333,177 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
+        {/* AI Personalized Recommendations */}
+        {recommendations && recommendations.recommendations && recommendations.recommendations.length > 0 && (
+          <div className="animate-fade-in-up" style={{ marginTop: '28px' }}>
+            <div className="glass-card" style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>🤖 Recommended For You</h3>
+                <Link href="/problems" style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                  Browse all problems →
+                </Link>
+              </div>
+
+              {/* Adaptive difficulty */}
+              <div style={{
+                padding: '12px 16px', borderRadius: '12px', marginBottom: '16px',
+                background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)',
+                display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
+              }}>
+                <span style={{ fontSize: '1.4rem' }}>🧠</span>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                    Adaptive Difficulty: <span className="gradient-text" style={{ textTransform: 'capitalize' }}>{recommendations.difficultyRecommendation?.difficulty}</span>
+                    {' '}{recommendations.difficultyRecommendation?.move === 'up' && '⬆️'}{recommendations.difficultyRecommendation?.move === 'down' && '⬇️'}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {recommendations.difficultyRecommendation?.rationale}
+                  </div>
+                </div>
+              </div>
+
+              {/* Weak areas */}
+              {recommendations.weakAreas && recommendations.weakAreas.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    Weak areas to focus on:
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {recommendations.weakAreas.map(w => (
+                      <span key={w.category} className="badge" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#f87171' }}>
+                        {w.category} • avg AI {w.avgAiScore} • {Math.round((1 - (w.accepted / (w.attempts || 1))) * 100)}% fail
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Ranked problems */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {recommendations.recommendations.slice(0, 4).map(r => (
+                  <Link key={r.problem._id} href={`/problems/${r.problem._id}`} style={{ textDecoration: 'none' }}>
+                    <div style={{
+                      padding: '14px 16px', borderRadius: '12px', background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center',
+                      gap: '12px', cursor: 'pointer', transition: 'all 0.2s ease'
+                    }}>
+                      <span style={{
+                        fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-primary)',
+                        background: 'rgba(99, 102, 241, 0.15)', padding: '4px 10px', borderRadius: '8px',
+                        whiteSpace: 'nowrap'
+                      }}>{r.matchScore}% match</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{r.problem.title}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>{r.reason}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <span className={`badge ${r.problem.difficulty === 'easy' ? 'badge-easy' : r.problem.difficulty === 'medium' ? 'badge-medium' : 'badge-hard'}`}>{r.problem.difficulty}</span>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>{r.problem.basePoints} pts</div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Performance Analytics */}
+        {analytics && (
+          <div className="animate-fade-in-up" style={{ marginTop: '28px' }}>
+            <div className="glass-card" style={{ padding: '24px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px' }}>📈 Your Performance</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                <div className="stat-card" style={{ padding: '16px' }}>
+                  <span className="stat-label">Acceptance Rate</span>
+                  <span className="stat-value">{analytics.totals.acceptRate}%</span>
+                </div>
+                <div className="stat-card" style={{ padding: '16px' }}>
+                  <span className="stat-label">Avg AI Score</span>
+                  <span className="stat-value gradient-text">{analytics.totals.avgAiScore}/100</span>
+                </div>
+                <div className="stat-card" style={{ padding: '16px' }}>
+                  <span className="stat-label">Avg Exec Time</span>
+                  <span className="stat-value">{analytics.totals.avgExecutionTime}ms</span>
+                </div>
+                <div className="stat-card" style={{ padding: '16px' }}>
+                  <span className="stat-label">Best AI Score</span>
+                  <span className="stat-value" style={{ color: 'var(--easy)' }}>{analytics.totals.bestAiScore}</span>
+                </div>
+              </div>
+
+              {analytics.series && analytics.series.length > 1 && (
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    AI score trend (last {Math.min(analytics.series.length, 30)} submissions)
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '90px', padding: '8px', background: 'var(--bg-secondary)', borderRadius: '10px', overflowX: 'auto' }}>
+                    {analytics.series.slice(-30).map((p, i) => (
+                      <div key={i} style={{ flex: '1 0 auto', minWidth: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', alignItems: 'center' }}>
+                        <div style={{
+                          width: '100%', borderRadius: '4px 4px 0 0',
+                          height: `${Math.max(4, p.aiScore)}%`,
+                          background: p.aiScore >= 70 ? 'var(--easy)' : p.aiScore >= 40 ? 'var(--medium)' : 'var(--hard)',
+                          opacity: p.status === 'accepted' ? 1 : 0.5
+                        }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Transparent Fraud Score */}
+        {fraudScore && (
+          <div className="animate-fade-in-up" style={{ marginTop: '28px' }}>
+            <div className="glass-card" style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', width: '72px', height: '72px', flexShrink: 0 }}>
+                  <svg viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)', width: '72px', height: '72px' }}>
+                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--bg-secondary)" strokeWidth="3.6" />
+                    <circle
+                      cx="18" cy="18" r="15.9" fill="none"
+                      stroke={fraudScore.score >= 50 ? 'var(--hard)' : fraudScore.score >= 25 ? '#f59e0b' : 'var(--easy)'}
+                      strokeWidth="3.6" strokeDasharray={`${fraudScore.score} 100`} strokeLinecap="round"
+                    />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.1rem' }}>
+                    {fraudScore.score}
+                  </div>
+                </div>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>
+                    🛡️ Account Trust Score
+                    <span className="badge" style={{ marginLeft: '10px', background: fraudScore.level === 'clean' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', color: fraudScore.level === 'clean' ? 'var(--easy)' : '#f87171', textTransform: 'capitalize' }}>
+                      {fraudScore.level}
+                    </span>
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Transparent score from {fraudScore.reasons?.length || 0} signal{(!fraudScore.reasons || fraudScore.reasons.length !== 1) ? 's' : ''}. Lower is better.
+                  </p>
+                </div>
+              </div>
+              {fraudScore.reasons && fraudScore.reasons.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
+                  {fraudScore.reasons.map((r, i) => (
+                    <div key={i} style={{
+                      padding: '10px 14px', borderRadius: '10px', fontSize: '0.85rem',
+                      background: r.points > 0 ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-secondary)',
+                      border: `1px solid ${r.points > 0 ? 'rgba(239, 68, 68, 0.25)' : 'var(--border-subtle)'}`,
+                      display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center'
+                    }}>
+                      <span style={{ flex: 1, color: r.points > 0 ? '#f87171' : 'var(--text-secondary)' }}>{r.detail}</span>
+                      {r.points > 0 && <span style={{ fontWeight: 800, color: 'var(--hard)', whiteSpace: 'nowrap' }}>+{r.points}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Goal Creation Modal */}

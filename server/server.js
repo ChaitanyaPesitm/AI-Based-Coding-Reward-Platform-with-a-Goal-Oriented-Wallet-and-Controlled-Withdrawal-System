@@ -25,6 +25,16 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+// Security headers (defense in depth alongside the rate limiters)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
 // Never leak internal error details (error.message) to clients in production.
 app.use((req, res, next) => {
   const originalJson = res.json.bind(res);
@@ -54,6 +64,9 @@ app.use('/api/withdrawals', require('./routes/withdrawals'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/ads', require('./routes/ads'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/recommendations', require('./routes/recommendations'));
+app.use('/api/fraud', require('./routes/fraud'));
+app.use('/api/admin', require('./routes/admin'));
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -205,14 +205,28 @@ export default function WalletPage() {
                   {history.map(tx => (
                     <tr key={tx.id}>
                       <td style={{ fontWeight: 600 }}>{tx.description}</td>
-                      <td><span className={`badge-lang badge-${tx.language}`}>{tx.language}</span></td>
                       <td>
-                        <span style={{ color: tx.aiScore >= 70 ? 'var(--easy)' : tx.aiScore >= 40 ? 'var(--medium)' : 'var(--hard)', fontWeight: 600 }}>
-                          {tx.aiScore}/100
-                        </span>
+                        {tx.language ? (
+                          <span className={`badge-lang badge-${tx.language}`}>{tx.language}</span>
+                        ) : (
+                          <span className="badge" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                            {tx.source === 'withdrawal' ? '💰 withdrawal' : tx.source || 'system'}
+                          </span>
+                        )}
                       </td>
                       <td>
-                        <span style={{ fontWeight: 700, color: 'var(--easy)' }}>+{tx.points}</span>
+                        {tx.aiScore ? (
+                          <span style={{ color: tx.aiScore >= 70 ? 'var(--easy)' : tx.aiScore >= 40 ? 'var(--medium)' : 'var(--hard)', fontWeight: 600 }}>
+                            {tx.aiScore}/100
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: 700, color: tx.type === 'spent' ? 'var(--hard)' : 'var(--easy)' }}>
+                          {tx.type === 'spent' ? '-' : '+'}{tx.points}
+                        </span>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginLeft: '4px' }}>(₹{tx.currency?.toFixed(2)})</span>
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>

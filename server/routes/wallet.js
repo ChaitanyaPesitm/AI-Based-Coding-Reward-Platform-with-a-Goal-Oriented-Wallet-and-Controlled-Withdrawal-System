@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Goal = require('../models/Goal');
-const Submission = require('../models/Submission');
+const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { pointsToCurrency } = require('../services/rewardEngine');
@@ -50,28 +50,29 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/wallet/history - Transaction history
+// GET /api/wallet/history - Transaction history from the reward ledger
 router.get('/history', async (req, res) => {
   try {
-    const submissions = await Submission.find({
-      user: req.user._id,
-      pointsEarned: { $gt: 0 }
-    })
-      .populate('problem', 'title difficulty language')
+    const entries = await Transaction.find({ user: req.user._id })
       .sort({ createdAt: -1 })
       .limit(50);
 
-    const transactions = submissions.map(s => ({
-      id: s._id,
-      type: 'earned',
-      points: s.pointsEarned,
-      currency: pointsToCurrency(s.pointsEarned),
-      description: `Solved "${s.problem ? s.problem.title : 'Unknown'}" (${s.status})`,
-      difficulty: s.problem ? s.problem.difficulty : 'unknown',
-      language: s.language,
-      aiScore: s.aiScore,
-      date: s.createdAt
-    }));
+    const transactions = entries.map(t => {
+      const isEarn = t.amount >= 0;
+      return {
+        id: t._id,
+        type: isEarn ? 'earned' : 'spent',
+        points: isEarn ? t.amount : Math.abs(t.amount),
+        signedPoints: t.amount,
+        currency: pointsToCurrency(Math.abs(t.amount)),
+        description: t.description || 'Transaction',
+        source: t.source,
+        difficulty: t.metadata?.difficulty || 'unknown',
+        language: t.metadata?.language || '',
+        aiScore: t.metadata?.aiScore || 0,
+        date: t.createdAt
+      };
+    });
 
     res.json({
       success: true,

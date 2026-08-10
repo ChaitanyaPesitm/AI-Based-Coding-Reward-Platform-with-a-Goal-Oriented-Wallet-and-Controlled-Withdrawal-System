@@ -11,6 +11,10 @@ const { evaluateCode } = require('../services/gemini');
 const { calculatePoints } = require('../services/rewardEngine');
 const { analyzeCode, compareComplexity } = require('../services/complexityAnalyzer');
 const { BADGE_META } = require('../services/badges');
+const { recordTransaction } = require('../services/ledger');
+
+// Hard cap on submitted code size (chars) — protects the remote executor.
+const MAX_CODE_CHARS = 50 * 1024;
 
 router.use(protect);
 
@@ -98,6 +102,13 @@ router.post('/', async (req, res) => {
       });
     }
 
+    if (code.length > MAX_CODE_CHARS) {
+      return res.status(413).json({
+        success: false,
+        message: `Code too large (max ${Math.round(MAX_CODE_CHARS / 1024)} KB). Please shorten your solution.`
+      });
+    }
+
     // Get problem with test cases
     const problem = await Problem.findById(problemId);
     if (!problem) {
@@ -138,6 +149,7 @@ router.post('/', async (req, res) => {
 
     submission.testCasesPassed = judgeResult.passed;
     submission.totalTestCases = judgeResult.total;
+    submission.executionTime = judgeResult.executionTime || 0;
 
     if (judgeResult.compilationError) {
       submission.status = 'compilation_error';
@@ -334,6 +346,30 @@ router.post('/', async (req, res) => {
       await freshUser.save();
     }
 
+    // Step 9: Reward ledger — every point earned gets an auditable entry.
+    // The breakdown metadata explains how the total is composed (base, hint
+    // bonus, streak bonus, proctor penalty) so each entry is fully auditable.
+    if (submission.pointsEarned > 0) {
+      await recordTransaction({
+        user: req.user._id,
+        type: 'earn',
+        amount: submission.pointsEarned,
+        source: 'submission',
+        reference: { model: 'Submission', id: submission._id },
+        description: `Solved "${problem.title}" (${problem.difficulty})`,
+        metadata: {
+          problem: problemId,
+          problemTitle: problem.title,
+          difficulty: problem.difficulty,
+          language: submissionLanguage,
+          aiScore: aiResult.aiScore,
+          testCasesPassed: judgeResult.passed,
+          totalTestCases: judgeResult.total,
+          breakdown
+        }
+      }).catch(err => console.error('Ledger write failed:', err.message));
+    }
+
     res.json({
       success: true,
       message: submission.status === 'accepted'
@@ -428,6 +464,84 @@ router.get('/violators', protect, adminOnly, async (req, res) => {
   } catch (error) {
     console.error('Violators fetch error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch violators', error: error.message });
+  }
+});
+
+// GET /api/submissions/analytics - User's performance analytics + improvement trend.
+// Must be declared BEFORE the /:id route.
+router.get('/analytics', async (req, res) => {
+  try {
+    const submissions = await Submission.find({ user: req.user._id })
+      .populate('problem', 'title difficulty basePoints category')
+      .sort({ createdAt: 1 });
+
+    const total = submissions.length;
+    const accepted = submissions.filter(s => s.status === 'accepted');
+    const withAi = submissions.filter(s => s.aiScore > 0);
+    const withTime = submissions.filter(s => s.executionTime > 0);
+
+    const series = submissions.slice(-30).map((s, i) => ({
+      index: i + 1,
+      date: s.createdAt,
+      status: s.status,
+      aiScore: s.aiScore,
+      executionTime: s.executionTime,
+      testCasesPassed: s.testCasesPassed,
+      totalTestCases: s.totalTestCases,
+      pointsEarned: s.pointsEarned,
+      problemTitle: s.problem?.title || 'Unknown'
+    }));
+
+    // Per-problem performance for fine-grained improvement tracking
+    const perProblem = {};
+    for (const s of submissions) {
+      const key = String(s.problem?._id || 'unknown');
+      if (!perProblem[key]) {
+        perProblem[key] = {
+          problem: s.problem?.title || 'Unknown',
+          difficulty: s.problem?.difficulty || 'unknown',
+          attempts: 0,
+          accepted: 0,
+          aiScores: [],
+          times: [],
+          bestAiScore: 0
+        };
+      }
+      perProblem[key].attempts += 1;
+      perProblem[key].accepted += s.status === 'accepted' ? 1 : 0;
+      if (s.aiScore > 0) {
+        perProblem[key].aiScores.push(s.aiScore);
+        perProblem[key].bestAiScore = Math.max(perProblem[key].bestAiScore, s.aiScore);
+      }
+      if (s.executionTime > 0) perProblem[key].times.push(s.executionTime);
+    }
+    const problemStats = Object.values(perProblem).map(p => ({
+      ...p,
+      avgAiScore: p.aiScores.length ? Math.round(p.aiScores.reduce((a, b) => a + b, 0) / p.aiScores.length) : 0,
+      avgExecutionTime: p.times.length ? Math.round(p.times.reduce((a, b) => a + b, 0) / p.times.length) : 0,
+      acceptRate: p.attempts ? Math.round((p.accepted / p.attempts) * 100) : 0
+    })).sort((a, b) => b.attempts - a.attempts);
+
+    res.json({
+      success: true,
+      data: {
+        totals: {
+          submissions: total,
+          accepted: accepted.length,
+          acceptRate: total ? Math.round((accepted.length / total) * 100) : 0,
+          avgAiScore: withAi.length ? Math.round(withAi.reduce((a, b) => a + b.aiScore, 0) / withAi.length) : 0,
+          bestAiScore: withAi.length ? Math.max(...withAi.map(s => s.aiScore)) : 0,
+          avgExecutionTime: withTime.length ? Math.round(withTime.reduce((a, b) => a + b.executionTime, 0) / withTime.length) : 0,
+          avgTestPassRate: total ? Math.round(submissions.reduce((a, b) => a + (b.totalTestCases ? b.testCasesPassed / b.totalTestCases : 0), 0) / total * 100) : 0,
+          pointsEarned: submissions.reduce((a, b) => a + (b.pointsEarned || 0), 0)
+        },
+        series,
+        problemStats
+      }
+    });
+  } catch (error) {
+    console.error('Analytics error:', error);
+    res.status(500).json({ success: false, message: 'Failed to build analytics', error: error.message });
   }
 });
 
