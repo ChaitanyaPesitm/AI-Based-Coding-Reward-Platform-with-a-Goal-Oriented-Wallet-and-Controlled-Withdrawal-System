@@ -6,6 +6,7 @@ const Goal = require('../models/Goal');
 const User = require('../models/User');
 const ProctorSession = require('../models/ProctorSession');
 const { protect, adminOnly } = require('../middleware/auth');
+const { submissionLimiter } = require('../middleware/rateLimiter');
 const { executeCode } = require('../services/wandbox');
 const { evaluateCode } = require('../services/gemini');
 const { calculatePoints } = require('../services/rewardEngine');
@@ -91,7 +92,8 @@ function updateStreak(user) {
 }
 
 // POST /api/submissions - Submit code for a problem
-router.post('/', async (req, res) => {
+// Rate-limited (10/min) so the remote executor can't be flooded; GET reads are NOT throttled.
+router.post('/', submissionLimiter, async (req, res) => {
   try {
     const { problemId, code, language } = req.body;
 

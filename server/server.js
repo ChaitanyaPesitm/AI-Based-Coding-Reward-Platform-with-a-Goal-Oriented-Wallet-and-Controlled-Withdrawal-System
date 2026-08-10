@@ -4,7 +4,10 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const { initSocket } = require('./services/socket');
-const { apiLimiter, authLimiter, submissionLimiter } = require('./middleware/rateLimiter');
+const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
+
+// submissionLimiter is consumed inside routes/submissions.js on the POST route
+// only, so submission READS are never throttled by the anti-flood limiter.
 
 // Load environment variables
 dotenv.config();
@@ -58,7 +61,9 @@ app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/goals', require('./routes/goals'));
 app.use('/api/problems', require('./routes/problems'));
 app.use('/api/proctor', require('./routes/proctor'));
-app.use('/api/submissions', submissionLimiter, require('./routes/submissions'));
+// Submission router: the write limiter is applied to POST only (inside the
+// router) so read endpoints (history, analytics, violators) are never throttled.
+app.use('/api/submissions', require('./routes/submissions'));
 app.use('/api/wallet', require('./routes/wallet'));
 app.use('/api/withdrawals', require('./routes/withdrawals'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));

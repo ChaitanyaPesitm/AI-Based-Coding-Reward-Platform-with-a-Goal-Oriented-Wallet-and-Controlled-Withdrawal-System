@@ -37,10 +37,10 @@ export default function DashboardPage() {
   const fetchData = async () => {
     try {
       const [walletRes, goalsRes, subsRes, meRes, recRes, anaRes, fraudRes] = await Promise.all([
-        walletAPI.getOverview(),
-        goalsAPI.getAll(),
-        submissionsAPI.getAll({ limit: 5 }),
-        authAPI.getMe(),
+        walletAPI.getOverview().catch(() => ({ data: { data: null } })),
+        goalsAPI.getAll().catch(() => ({ data: { data: [] } })),
+        submissionsAPI.getAll({ limit: 5 }).catch(() => ({ data: { data: [] } })),
+        authAPI.getMe().catch(() => ({ data: { data: null } })),
         recommendationsAPI.get().catch(() => ({ data: { data: null } })),
         submissionsAPI.getAnalytics().catch(() => ({ data: { data: null } })),
         fraudAPI.getMyScore().catch(() => ({ data: { data: null } }))
