@@ -95,7 +95,11 @@ export const leaderboardAPI = {
 // Ads APIs
 export const adsAPI = {
   getByCategory: (category) => api.get('/ads', { params: { category } }),
-  getSponsoredChallenges: () => api.get('/ads/sponsored-challenges')
+  getSponsoredChallenges: () => api.get('/ads/sponsored-challenges'),
+  impression: (id) => api.post(`/ads/${id}/impression`),
+  click: (id) => api.post(`/ads/${id}/click`),
+  viewStart: (id) => api.post(`/ads/${id}/view-start`),
+  reward: (id, viewId) => api.post(`/ads/${id}/reward`, { viewId })
 };
 
 // Platform Settings APIs
@@ -129,7 +133,11 @@ export const fraudAPI = {
 export const adminAPI = {
   getAnalytics: () => api.get('/admin/analytics'),
   getLedger: (params) => api.get('/admin/ledger', { params }),
-  adjustPoints: (data) => api.post('/admin/ledger/adjust', data)
+  adjustPoints: (data) => api.post('/admin/ledger/adjust', data),
+  getAds: () => api.get('/admin/ads'),
+  createAd: (data) => api.post('/admin/ads', data),
+  updateAd: (id, data) => api.put(`/admin/ads/${id}`, data),
+  deleteAd: (id) => api.delete(`/admin/ads/${id}`)
 };
 
 export default api;

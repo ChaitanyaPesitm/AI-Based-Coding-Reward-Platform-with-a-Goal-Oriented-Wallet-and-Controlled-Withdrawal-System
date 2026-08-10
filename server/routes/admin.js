@@ -6,6 +6,7 @@ const Problem = require('../models/Problem');
 const Withdrawal = require('../models/Withdrawal');
 const Transaction = require('../models/Transaction');
 const FraudCase = require('../models/FraudCase');
+const Ad = require('../models/Ad');
 const { protect, adminOnly } = require('../middleware/auth');
 
 router.use(protect, adminOnly);
@@ -153,6 +154,91 @@ router.get('/analytics', async (req, res) => {
   } catch (error) {
     console.error('Admin analytics error:', error);
     res.status(500).json({ success: false, message: 'Failed to load admin analytics', error: error.message });
+  }
+});
+
+// ─── Ad management ───────────────────────────────────────────────────────────
+
+// GET /api/admin/ads - All ads with performance stats (CTR = clicks/impressions)
+router.get('/ads', async (req, res) => {
+  try {
+    const ads = await Ad.find({}).sort({ createdAt: -1 });
+    const data = ads.map(a => ({
+      _id: a._id,
+      sponsor: a.sponsor,
+      title: a.title,
+      description: a.description,
+      url: a.url,
+      cta: a.cta,
+      badge: a.badge,
+      category: a.category,
+      isActive: a.isActive,
+      rewardPoints: a.rewardPoints,
+      rewardCooldownHours: a.rewardCooldownHours,
+      impressions: a.impressions,
+      clicks: a.clicks,
+      rewardClaims: a.rewardClaims,
+      ctr: a.impressions > 0 ? Math.round((a.clicks / a.impressions) * 1000) / 10 : 0,
+      createdAt: a.createdAt
+    }));
+    res.json({ success: true, count: data.length, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch ads', error: error.message });
+  }
+});
+
+// POST /api/admin/ads - Create an ad
+router.post('/ads', async (req, res) => {
+  try {
+    const { sponsor, title, description, url, cta, badge, category, isActive, rewardPoints, rewardCooldownHours } = req.body;
+    if (!sponsor || !title || !url) {
+      return res.status(400).json({ success: false, message: 'sponsor, title and url are required' });
+    }
+    const ad = await Ad.create({
+      sponsor,
+      title,
+      description: description || '',
+      url,
+      cta: cta || 'Learn More',
+      badge: badge || '',
+      category: category || 'custom',
+      isActive: isActive !== false,
+      rewardPoints: Math.max(0, parseInt(rewardPoints) || 0),
+      rewardCooldownHours: Math.min(168, Math.max(0, parseInt(rewardCooldownHours) || 24))
+    });
+    res.status(201).json({ success: true, message: 'Ad created', data: ad });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to create ad', error: error.message });
+  }
+});
+
+// PUT /api/admin/ads/:id - Update an ad (or toggle isActive)
+router.put('/ads/:id', async (req, res) => {
+  try {
+    const allowed = ['sponsor', 'title', 'description', 'url', 'cta', 'badge', 'category', 'isActive', 'rewardPoints', 'rewardCooldownHours'];
+    const updates = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+    if (updates.rewardPoints !== undefined) updates.rewardPoints = Math.max(0, parseInt(updates.rewardPoints) || 0);
+    if (updates.rewardCooldownHours !== undefined) updates.rewardCooldownHours = Math.min(168, Math.max(0, parseInt(updates.rewardCooldownHours) || 24));
+
+    const ad = await Ad.findByIdAndUpdate(req.params.id, updates, { new: true });
+    if (!ad) return res.status(404).json({ success: false, message: 'Ad not found' });
+    res.json({ success: true, message: 'Ad updated', data: ad });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to update ad', error: error.message });
+  }
+});
+
+// DELETE /api/admin/ads/:id - Delete an ad
+router.delete('/ads/:id', async (req, res) => {
+  try {
+    const ad = await Ad.findByIdAndDelete(req.params.id);
+    if (!ad) return res.status(404).json({ success: false, message: 'Ad not found' });
+    res.json({ success: true, message: 'Ad deleted' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to delete ad', error: error.message });
   }
 });
 

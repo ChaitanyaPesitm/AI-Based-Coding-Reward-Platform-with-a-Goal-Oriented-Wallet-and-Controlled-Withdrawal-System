@@ -1,5 +1,22 @@
 const User = require('../models/User');
 const Problem = require('../models/Problem');
+const Ad = require('../models/Ad');
+
+// Seed ads migrated from the old hardcoded mock list. rewardPoints enables the
+// rewarded-watch flow (+points for watching).
+const initialAds = [
+  { sponsor: 'Dell', title: 'Dell Inspiron 15 — ₹45,990', description: 'Intel i5 12th Gen, 16 GB RAM, 512 GB SSD. Perfect for coding!', cta: 'View Deal', url: 'https://www.dell.com', badge: '🏷️ Best Value', category: 'laptop', rewardPoints: 10 },
+  { sponsor: 'Lenovo', title: 'Lenovo IdeaPad Slim 5 — ₹52,490', description: 'AMD Ryzen 7, 16 GB RAM, 512 GB SSD. Ultra-thin & powerful.', cta: 'Shop Now', url: 'https://www.lenovo.com', badge: '⭐ Top Rated', category: 'laptop', rewardPoints: 10 },
+  { sponsor: 'Udemy', title: 'Udemy — Courses from ₹399', description: 'Master DSA, Web Dev, ML. 200k+ courses. Lifetime access.', cta: 'Browse Courses', url: 'https://www.udemy.com', badge: '🎓 Bestseller', category: 'course', rewardPoints: 10 },
+  { sponsor: 'Coursera', title: 'Coursera Professional Certificates', description: 'Google, Meta, IBM certifications. Get job-ready in 6 months.', cta: 'Enroll Free', url: 'https://www.coursera.org', badge: '🏅 Certified', category: 'course', rewardPoints: 10 },
+  { sponsor: 'MakeMyTrip', title: 'MakeMyTrip — Up to 40% Off Flights', description: 'Book domestic & international flights at the lowest prices.', cta: 'Book Now', url: 'https://www.makemytrip.com', badge: '✈️ Best Price', category: 'travel', rewardPoints: 10 },
+  { sponsor: 'Airbnb', title: 'Airbnb — Unique Stays Worldwide', description: 'Find homes, cabins & experiences for your next trip.', cta: 'Explore', url: 'https://www.airbnb.com', badge: '🏠 Unique Stays', category: 'travel', rewardPoints: 10 },
+  { sponsor: 'Amazon', title: 'Amazon — Today\'s Deals on Electronics', description: 'Headphones, smartwatches, tablets. Limited time offers!', cta: 'See Deals', url: 'https://www.amazon.in', badge: '⚡ Flash Sale', category: 'gadget', rewardPoints: 10 },
+  { sponsor: 'Flipkart', title: 'Flipkart — Big Billion Days', description: 'Smartphones & accessories at unbeatable prices.', cta: 'Shop Now', url: 'https://www.flipkart.com', badge: '🔥 Hot Deal', category: 'gadget', rewardPoints: 10 },
+  { sponsor: 'Zerodha', title: 'Zerodha — Start Investing Today', description: 'India\'s largest stockbroker. Zero brokerage on equity delivery.', cta: 'Open Account', url: 'https://zerodha.com', badge: '📈 #1 Broker', category: 'savings', rewardPoints: 10 },
+  { sponsor: 'Fi Money', title: 'Fi Money — 7% Interest on Savings', description: 'Smart savings account. No minimum balance. Instant FD.', cta: 'Join Now', url: 'https://fi.money', badge: '💰 High Interest', category: 'savings', rewardPoints: 10 },
+  { sponsor: 'CodeRewards', title: 'Sponsored: Keep Coding, Keep Earning', description: 'Solve more problems to reach your financial goals faster!', cta: 'View Problems', url: '/problems', badge: '💡 Tip', category: 'custom', rewardPoints: 0 }
+];
 
 const initialProblems = [
   // ─── C PROBLEMS ──────────────────────────────────────────────────────────
@@ -148,6 +165,15 @@ const autoSeed = async () => {
         }
       }
       console.log(`✅ Auto-Seeded ${initialProblems.length} coding problems`);
+    }
+
+    // Seed ads if the collection is empty
+    const adCount = await Ad.countDocuments();
+    if (adCount === 0) {
+      for (const ad of initialAds) {
+        await Ad.create(ad);
+      }
+      console.log(`✅ Auto-Seeded ${initialAds.length} ads`);
     }
   } catch (err) {
     console.error('Auto-seed error:', err.message);

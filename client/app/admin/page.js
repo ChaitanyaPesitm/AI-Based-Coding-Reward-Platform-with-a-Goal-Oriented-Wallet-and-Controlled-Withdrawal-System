@@ -14,6 +14,12 @@ export default function AdminPage() {
   const [violators, setViolators] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [fraudCases, setFraudCases] = useState([]);
+  const [ads, setAds] = useState([]);
+  const [showAddAd, setShowAddAd] = useState(false);
+  const [adForm, setAdForm] = useState({
+    sponsor: '', title: '', description: '', url: '', cta: '', badge: '',
+    category: 'laptop', rewardPoints: 10, rewardCooldownHours: 24
+  });
   const [proctoringEnabled, setProctoringEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [showAddProblem, setShowAddProblem] = useState(false);
@@ -26,13 +32,14 @@ export default function AdminPage() {
 
   const fetchData = async () => {
     try {
-      const [probRes, wdRes, settingsRes, violRes, anaRes, fraudRes] = await Promise.all([
+      const [probRes, wdRes, settingsRes, violRes, anaRes, fraudRes, adsRes] = await Promise.all([
         problemsAPI.getAll(),
         withdrawalsAPI.getAllAdmin({}).catch(() => ({ data: { data: [] } })),
         settingsAPI.get().catch(() => ({ data: { data: { proctoringEnabled: true } } })),
         submissionsAPI.getViolators().catch(() => ({ data: { data: [] } })),
         adminAPI.getAnalytics().catch(() => ({ data: { data: null } })),
-        fraudAPI.getCases({}).catch(() => ({ data: { data: [] } }))
+        fraudAPI.getCases({}).catch(() => ({ data: { data: [] } })),
+        adminAPI.getAds().catch(() => ({ data: { data: [] } }))
       ]);
       setProblems(probRes.data.data);
       setWithdrawals(wdRes.data.data);
@@ -40,6 +47,7 @@ export default function AdminPage() {
       setViolators(violRes.data.data);
       setAnalytics(anaRes.data.data);
       setFraudCases(fraudRes.data.data);
+      setAds(adsRes.data.data);
     } catch (err) {
       console.error('Admin fetch error:', err);
     } finally {
@@ -159,6 +167,39 @@ export default function AdminPage() {
     }
   };
 
+  const handleCreateAd = async (e) => {
+    e.preventDefault();
+    try {
+      await adminAPI.createAd(adForm);
+      setShowAddAd(false);
+      setAdForm({
+        sponsor: '', title: '', description: '', url: '', cta: '', badge: '',
+        category: 'laptop', rewardPoints: 10, rewardCooldownHours: 24
+      });
+      fetchData();
+    } catch (err) {
+      console.error('Ad creation failed:', err);
+    }
+  };
+
+  const handleToggleAd = async (ad) => {
+    try {
+      await adminAPI.updateAd(ad._id, { isActive: !ad.isActive });
+      fetchData();
+    } catch (err) {
+      console.error('Ad toggle failed:', err);
+    }
+  };
+
+  const handleDeleteAd = async (id) => {
+    try {
+      await adminAPI.deleteAd(id);
+      fetchData();
+    } catch (err) {
+      console.error('Ad delete failed:', err);
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)' }}>
@@ -183,7 +224,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          {['problems', 'withdrawals', 'analytics', 'fraud', 'violators', 'settings'].map(t => (
+          {['problems', 'withdrawals', 'analytics', 'fraud', 'ads', 'violators', 'settings'].map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -200,7 +241,7 @@ export default function AdminPage() {
                 textTransform: 'capitalize'
               }}
             >
-              {t === 'problems' ? '💻 ' : t === 'withdrawals' ? '📋 ' : t === 'analytics' ? '📊 ' : t === 'fraud' ? '🔍 ' : t === 'violators' ? '🛡️ ' : '⚙️ '}{t}
+              {t === 'problems' ? '💻 ' : t === 'withdrawals' ? '📋 ' : t === 'analytics' ? '📊 ' : t === 'fraud' ? '🔍 ' : t === 'ads' ? '📣 ' : t === 'violators' ? '🛡️ ' : '⚙️ '}{t}
               {t === 'withdrawals' && withdrawals.filter(w => w.status === 'pending' || w.status === 'verified').length > 0 && (
                 <span style={{
                   marginLeft: '6px',
@@ -621,6 +662,73 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* Ads Tab */}
+        {tab === 'ads' && (
+          <div className="animate-fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 style={{ fontWeight: 700 }}>📣 Manage Ads</h3>
+              <button className="btn-primary" onClick={() => setShowAddAd(true)} style={{ padding: '8px 20px', fontSize: '0.85rem' }}>
+                + Add Ad
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {ads.length > 0 ? ads.map(ad => (
+                <div key={ad._id} className="glass-card" style={{ padding: '18px 20px', opacity: ad.isActive ? 1 : 0.55 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{ad.title}</span>
+                        <span className={`badge badge-${ad.category}`}>{ad.category}</span>
+                        {ad.rewardPoints > 0 && (
+                          <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--easy)' }}>
+                            🎁 +{ad.rewardPoints} pts
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        by {ad.sponsor} • {ad.url}
+                      </div>
+                      {ad.description && (
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '6px' }}>{ad.description}</div>
+                      )}
+                      <div style={{ display: 'flex', gap: '16px', marginTop: '10px', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <span>👁 {ad.impressions} impressions</span>
+                        <span>🖱 {ad.clicks} clicks</span>
+                        <span>📈 CTR {ad.ctr}%</span>
+                        <span>🎁 {ad.rewardClaims} rewarded</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: '6px 14px', fontSize: '0.78rem' }}
+                        onClick={() => handleToggleAd(ad)}
+                      >
+                        {ad.isActive ? '🟢 Active' : '⚪ Disabled'}
+                      </button>
+                      <button
+                        style={{
+                          padding: '6px 14px', fontSize: '0.78rem', borderRadius: '8px', border: 'none',
+                          background: 'rgba(239, 68, 68, 0.12)', color: 'var(--hard)', fontWeight: 600, cursor: 'pointer'
+                        }}
+                        onClick={() => handleDeleteAd(ad._id)}
+                      >
+                        🗑 Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )) : (
+                <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '2.5rem' }}>📣</span>
+                  <p style={{ marginTop: '10px' }}>No ads yet. Create your first sponsored ad.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Settings Tab */}
         {tab === 'settings' && (
           <div className="animate-fade-in">
@@ -745,6 +853,51 @@ export default function AdminPage() {
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button type="button" className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowAddProblem(false)}>Cancel</button>
                 <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Problem</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Ad Modal */}
+      {showAddAd && (
+        <div className="modal-overlay" onClick={() => setShowAddAd(false)}>
+          <div className="modal-content" style={{ maxWidth: '520px', maxHeight: '85vh' }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '20px' }}>📣 Add New Ad</h2>
+
+            <form onSubmit={handleCreateAd} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <input type="text" className="input-field" placeholder="Sponsor (e.g. Dell)" value={adForm.sponsor} onChange={(e) => setAdForm({...adForm, sponsor: e.target.value})} required />
+                <input type="text" className="input-field" placeholder="Ad Title" value={adForm.title} onChange={(e) => setAdForm({...adForm, title: e.target.value})} required />
+              </div>
+              <textarea className="input-field" placeholder="Description" rows={2} style={{ resize: 'vertical' }} value={adForm.description} onChange={(e) => setAdForm({...adForm, description: e.target.value})} />
+              <input type="url" className="input-field" placeholder="Destination URL (https://…)" value={adForm.url} onChange={(e) => setAdForm({...adForm, url: e.target.value})} required />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                <input type="text" className="input-field" placeholder="CTA (e.g. Shop Now)" value={adForm.cta} onChange={(e) => setAdForm({...adForm, cta: e.target.value})} />
+                <input type="text" className="input-field" placeholder="Badge (e.g. ⭐ Hot)" value={adForm.badge} onChange={(e) => setAdForm({...adForm, badge: e.target.value})} />
+                <select className="input-field" value={adForm.category} onChange={(e) => setAdForm({...adForm, category: e.target.value})}>
+                  <option value="laptop">Laptop</option>
+                  <option value="course">Course</option>
+                  <option value="travel">Travel</option>
+                  <option value="gadget">Gadget</option>
+                  <option value="savings">Savings</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Reward Points (0 = no reward)</label>
+                  <input type="number" className="input-field" min="0" max="500" value={adForm.rewardPoints} onChange={(e) => setAdForm({...adForm, rewardPoints: parseInt(e.target.value) || 0})} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Reward Cooldown (hours)</label>
+                  <input type="number" className="input-field" min="0" max="168" value={adForm.rewardCooldownHours} onChange={(e) => setAdForm({...adForm, rewardCooldownHours: parseInt(e.target.value) || 24})} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <button type="button" className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowAddAd(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Ad</button>
               </div>
             </form>
           </div>

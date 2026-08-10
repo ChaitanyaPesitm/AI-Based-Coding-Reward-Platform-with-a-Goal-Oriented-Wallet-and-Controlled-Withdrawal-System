@@ -1,31 +1,100 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { adsAPI } from '@/lib/api';
 
 /**
  * Goal-Based Advertisement component.
- * Fetches ads matching the user's active goal category and rotates them every 8s.
+ * Fetches DB-backed ads matching the user's active goal category, rotates them
+ * every 8s, tracks impressions/clicks, and supports the rewarded-watch flow
+ * (watch a short countdown to earn bonus points).
  */
 export default function GoalAd({ category = 'custom', compact = false }) {
   const [ads, setAds] = useState([]);
   const [current, setCurrent] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [watching, setWatching] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [rewardMsg, setRewardMsg] = useState('');
+  const viewIdRef = useRef(null);
+  const currentAdIdRef = useRef(null);
 
   useEffect(() => {
     adsAPI.getByCategory(category)
-      .then(res => setAds(res.data.data || []))
+      .then(res => {
+        setAds(res.data.data || []);
+        setCurrent(0);
+      })
       .catch(() => setAds([]))
       .finally(() => setLoading(false));
   }, [category]);
 
-  // Rotate ads every 8 seconds
+  // Track an impression whenever the displayed ad changes
   useEffect(() => {
-    if (ads.length <= 1) return;
+    const ad = ads[current];
+    if (!ad || !ad.id) return;
+    currentAdIdRef.current = ad.id;
+    adsAPI.impression(ad.id).catch(() => {});
+  }, [current, ads]);
+
+  // Rotate ads every 8 seconds (paused while a rewarded watch is running)
+  useEffect(() => {
+    if (ads.length <= 1 || watching) return;
     const timer = setInterval(() => {
       setCurrent(c => (c + 1) % ads.length);
     }, 8000);
     return () => clearInterval(timer);
-  }, [ads]);
+  }, [ads, watching]);
+
+  const handleClick = useCallback(async (e, ad) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const res = await adsAPI.click(ad.id);
+      const url = res.data.data?.url || ad.url;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      window.open(ad.url, '_blank', 'noopener,noreferrer');
+    }
+  }, []);
+
+  const startReward = useCallback(async (ad) => {
+    setRewardMsg('');
+    try {
+      const res = await adsAPI.viewStart(ad.id);
+      const { viewId, requiredSeconds } = res.data.data;
+      viewIdRef.current = viewId;
+      setWatching(true);
+      setCountdown(requiredSeconds);
+    } catch (err) {
+      setRewardMsg(err.response?.data?.message || 'Reward unavailable right now.');
+    }
+  }, []);
+
+  // Countdown → claim reward when the minimum watch time elapses
+  useEffect(() => {
+    if (!watching) return;
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+
+    const ad = ads[current];
+    const viewId = viewIdRef.current;
+    viewIdRef.current = null;
+    if (!ad || !viewId) {
+      const t = setTimeout(() => setWatching(false), 0);
+      return () => clearTimeout(t);
+    }
+    adsAPI.reward(ad.id, viewId)
+      .then(res => {
+        setRewardMsg(res.data.message || `+${res.data.data?.points} points earned!`);
+        setWatching(false);
+      })
+      .catch(err => {
+        setRewardMsg(err.response?.data?.message || 'Reward claim failed.');
+        setWatching(false);
+      });
+  }, [watching, countdown, ads, current]);
 
   if (loading) return null;
   if (ads.length === 0) return null;
@@ -54,6 +123,7 @@ export default function GoalAd({ category = 'custom', compact = false }) {
         </div>
         <a
           href={ad.url}
+          onClick={(e) => handleClick(e, ad)}
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -101,6 +171,18 @@ export default function GoalAd({ category = 'custom', compact = false }) {
             {ad.badge}
           </span>
         )}
+        {ad.rewardPoints > 0 && (
+          <span style={{
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            color: 'var(--easy)',
+            background: 'rgba(16, 185, 129, 0.12)',
+            padding: '2px 8px',
+            borderRadius: '4px'
+          }}>
+            🎁 +{ad.rewardPoints} pts
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
           Related to your{' '}
           <span style={{ color: 'var(--accent-primary)' }}>
@@ -125,17 +207,52 @@ export default function GoalAd({ category = 'custom', compact = false }) {
           </div>
         </div>
 
-        <a
-          href={ad.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ textDecoration: 'none' }}
-        >
-          <button className="btn-primary" style={{ padding: '10px 20px', fontSize: '0.88rem', whiteSpace: 'nowrap' }}>
-            {ad.cta} →
-          </button>
-        </a>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
+          <a
+            href={ad.url}
+            onClick={(e) => handleClick(e, ad)}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ textDecoration: 'none' }}
+          >
+            <button className="btn-primary" style={{ padding: '10px 20px', fontSize: '0.88rem', whiteSpace: 'nowrap' }}>
+              {ad.cta} →
+            </button>
+          </a>
+          {ad.rewardPoints > 0 && (
+            <button
+              className="btn-secondary"
+              disabled={watching}
+              onClick={() => startReward(ad)}
+              style={{
+                padding: '8px 20px',
+                fontSize: '0.82rem',
+                whiteSpace: 'nowrap',
+                background: watching ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                color: 'var(--easy)',
+                cursor: watching ? 'default' : 'pointer'
+              }}
+            >
+              {watching ? `Watching… ${countdown}s` : `▶ Watch to earn +${ad.rewardPoints} pts`}
+            </button>
+          )}
+        </div>
       </div>
+
+      {rewardMsg && (
+        <div style={{
+          marginTop: '14px',
+          padding: '10px 14px',
+          borderRadius: '10px',
+          fontSize: '0.85rem',
+          background: rewardMsg.includes('points earned') ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+          border: `1px solid ${rewardMsg.includes('points earned') ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+          color: rewardMsg.includes('points earned') ? 'var(--easy)' : 'var(--medium)'
+        }}>
+          {rewardMsg}
+        </div>
+      )}
 
       {/* Pagination dots */}
       {ads.length > 1 && (

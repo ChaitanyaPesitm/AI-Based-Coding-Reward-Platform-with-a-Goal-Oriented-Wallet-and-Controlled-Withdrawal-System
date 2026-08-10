@@ -37,4 +37,17 @@ const submissionLimiter = rateLimit({
   }
 });
 
-module.exports = { authLimiter, apiLimiter, submissionLimiter };
+// Ad action limiter — impressions/clicks/rewards are high-frequency UI events
+// but still must be bounded to stop scripted farming.
+const adLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many ad actions. Please slow down.'
+  }
+});
+
+module.exports = { authLimiter, apiLimiter, submissionLimiter, adLimiter };

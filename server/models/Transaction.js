@@ -25,6 +25,7 @@ const transactionSchema = new mongoose.Schema({
       'submission',       // points from a problem solve
       'hint_bonus',       // +5% rewarded-ad AI hint bonus
       'streak_bonus',     // +5% 7+ day streak bonus
+      'ad_reward',        // points from watching a rewarded ad
       'withdrawal',       // points paid out on approved withdrawal
       'admin_adjustment', // manual correction by an admin
       'fraud_adjustment'  // points clawed back by the fraud engine
