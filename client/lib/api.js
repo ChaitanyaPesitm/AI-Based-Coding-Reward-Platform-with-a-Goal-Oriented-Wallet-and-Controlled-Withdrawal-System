@@ -49,6 +49,7 @@ export const goalsAPI = {
   getActive: () => api.get('/goals/active'),
   getById: (id) => api.get(`/goals/${id}`),
   update: (id, data) => api.put(`/goals/${id}`, data),
+  reset: (id) => api.post(`/goals/${id}/reset`),
   delete: (id) => api.delete(`/goals/${id}`)
 };
 

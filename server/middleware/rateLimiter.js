@@ -3,7 +3,7 @@ const rateLimit = require('express-rate-limit');
 // Strict limiter for auth endpoints — prevents brute-force
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

@@ -117,6 +117,28 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// POST /api/goals/:id/reset - Reset goal progress back to active/0 points
+router.post('/:id/reset', async (req, res) => {
+  try {
+    const goal = await Goal.findOne({ _id: req.params.id, user: req.user._id });
+    if (!goal) {
+      return res.status(404).json({ success: false, message: 'Goal not found' });
+    }
+
+    goal.currentPoints = 0;
+    goal.status = 'active';
+    await goal.save();
+
+    res.json({ success: true, message: 'Goal reset successfully', data: goal });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset goal',
+      error: error.message
+    });
+  }
+});
+
 // DELETE /api/goals/:id - Delete goal (only if no points accumulated)
 router.delete('/:id', async (req, res) => {
   try {

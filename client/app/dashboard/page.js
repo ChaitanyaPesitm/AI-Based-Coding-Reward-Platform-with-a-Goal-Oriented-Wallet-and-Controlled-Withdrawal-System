@@ -31,7 +31,7 @@ export default function DashboardPage() {
   const [fraudScore, setFraudScore] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showGoalModal, setShowGoalModal] = useState(false);
-  const [goalForm, setGoalForm] = useState({ title: '', description: '', category: 'laptop', targetAmount: 5000 });
+  const [goalForm, setGoalForm] = useState({ title: '', description: '', category: 'laptop', targetAmount: 10000 });
   const [goalError, setGoalError] = useState('');
 
   const fetchData = async () => {
@@ -76,7 +76,7 @@ export default function DashboardPage() {
     try {
       await goalsAPI.create(goalForm);
       setShowGoalModal(false);
-      setGoalForm({ title: '', description: '', category: 'laptop', targetAmount: 5000 });
+      setGoalForm({ title: '', description: '', category: 'laptop', targetAmount: 10000 });
       fetchData();
     } catch (err) {
       setGoalError(err.response?.data?.message || 'Failed to create goal');
@@ -541,7 +541,7 @@ export default function DashboardPage() {
 
               <div>
                 <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Target Points (100 pts = ₹10)</label>
-                <input type="number" className="input-field" placeholder="e.g., 50000" min="100" value={goalForm.targetAmount} onChange={(e) => setGoalForm({...goalForm, targetAmount: parseInt(e.target.value) || 0})} required />
+                <input type="number" className="input-field" placeholder="e.g., 50000" min="10000" value={goalForm.targetAmount} onChange={(e) => setGoalForm({...goalForm, targetAmount: parseInt(e.target.value) || 0})} required />
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>≈ ₹{((goalForm.targetAmount || 0) / 100 * 10).toLocaleString()}</p>
               </div>
 

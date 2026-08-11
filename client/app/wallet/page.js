@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { walletAPI, withdrawalsAPI } from '@/lib/api';
+import { walletAPI, withdrawalsAPI, goalsAPI } from '@/lib/api';
 import CertificateModal from '@/components/CertificateModal';
 
 export default function WalletPage() {
@@ -45,6 +45,17 @@ export default function WalletPage() {
       fetchData();
     }
   }, [user]);
+
+  const handleResetGoal = async () => {
+    if (!wallet?.activeGoal) return;
+    if (!window.confirm('Reset goal progress to 0 points?')) return;
+    try {
+      await goalsAPI.reset(wallet.activeGoal.id);
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to reset goal');
+    }
+  };
 
   const handleWithdraw = async () => {
     if (!wallet?.activeGoal) return;
@@ -161,6 +172,15 @@ export default function WalletPage() {
                   style={{ padding: '8px 16px', fontSize: '0.85rem' }}
                 >
                   🎓 Goal Certificate (PDF)
+                </button>
+
+                {/* Reset Goal Button */}
+                <button
+                  className="btn-secondary"
+                  onClick={handleResetGoal}
+                  style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                >
+                  🔄 Reset Goal
                 </button>
 
                 <button

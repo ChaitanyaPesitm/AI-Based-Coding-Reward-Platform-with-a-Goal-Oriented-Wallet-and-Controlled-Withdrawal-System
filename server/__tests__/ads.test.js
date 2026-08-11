@@ -37,7 +37,7 @@ const makeAd = (overrides = {}) =>
   });
 
 const makeGoal = (userId, overrides = {}) =>
-  Goal.create({ user: userId, title: 'Buy a laptop', category: 'laptop', targetAmount: 1000, currentPoints: 100, status: 'active', ...overrides });
+  Goal.create({ user: userId, title: 'Buy a laptop', category: 'laptop', targetAmount: 10000, currentPoints: 100, status: 'active', ...overrides });
 
 const authHeader = (user) => `Bearer ${user.generateToken()}`;
 

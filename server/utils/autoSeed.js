@@ -1,6 +1,8 @@
 const User = require('../models/User');
 const Problem = require('../models/Problem');
 const Ad = require('../models/Ad');
+const Goal = require('../models/Goal');
+const Withdrawal = require('../models/Withdrawal');
 
 // Seed ads migrated from the old hardcoded mock list. rewardPoints enables the
 // rewarded-watch flow (+points for watching).
@@ -137,7 +139,7 @@ const initialProblems = [
 
 const demoUsers = [
   { name: 'Admin User', email: 'admin@coderward.com', password: 'Admin@Code2026!', isAdmin: true, totalPointsEarned: 1250, problemsSolved: 12 },
-  { name: 'Demo Student', email: 'student@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 450, problemsSolved: 4 },
+  { name: 'Demo Student', email: 'student@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 10000, problemsSolved: 15 },
   { name: 'Rahul Sharma', email: 'rahul@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 850, problemsSolved: 8 },
   { name: 'Deeksha Patel', email: 'deeksha@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 1100, problemsSolved: 10 },
   { name: 'Anish Kumar', email: 'anish@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 620, problemsSolved: 6 }
@@ -174,6 +176,43 @@ const autoSeed = async () => {
         await Ad.create(ad);
       }
       console.log(`✅ Auto-Seeded ${initialAds.length} ads`);
+    }
+
+    // Seed a completed goal for the demo student so withdrawal can be demoed
+    const demoStudent = await User.findOne({ email: 'student@example.com' });
+    if (demoStudent) {
+      if (demoStudent.totalPointsEarned < 10000) {
+        demoStudent.totalPointsEarned = 10000;
+        demoStudent.problemsSolved = Math.max(demoStudent.problemsSolved, 15);
+        await demoStudent.save();
+      }
+      const demoGoal = await Goal.findOne({ user: demoStudent._id });
+      if (demoGoal && (demoGoal.status !== 'active' || demoGoal.currentPoints < demoGoal.targetAmount)) {
+        if (demoGoal.targetAmount < 10000) {
+          demoGoal.targetAmount = 10000;
+        }
+        demoGoal.currentPoints = demoGoal.targetAmount;
+        demoGoal.status = 'active';
+        await demoGoal.save();
+        console.log(`🎯 Demo student goal set to active + 100%`);
+      } else if (!demoGoal) {
+        await Goal.create({
+          user: demoStudent._id,
+          title: 'Buy a Laptop',
+          description: 'Save up for a new coding laptop',
+          category: 'laptop',
+          targetAmount: 10000,
+          currentPoints: 10000,
+          status: 'active'
+        });
+        console.log(`🎯 Auto-Seeded completed goal for demo student (student@example.com)`);
+      }
+
+      // Clear any stale pending/verified withdrawals so re-demo works each boot
+      await Withdrawal.deleteMany({
+        user: demoStudent._id,
+        status: { $in: ['pending', 'verified'] }
+      });
     }
   } catch (err) {
     console.error('Auto-seed error:', err.message);

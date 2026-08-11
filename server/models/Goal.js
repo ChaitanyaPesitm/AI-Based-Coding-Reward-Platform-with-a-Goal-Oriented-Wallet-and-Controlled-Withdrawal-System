@@ -26,7 +26,7 @@ const goalSchema = new mongoose.Schema({
   targetAmount: {
     type: Number,
     required: [true, 'Target amount in points is required'],
-    min: 100
+    min: 10000
   },
   currentPoints: {
     type: Number,
