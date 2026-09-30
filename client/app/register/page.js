@@ -39,61 +39,74 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="bg-grid" style={{
-      minHeight: 'calc(100vh - 64px)',
+    <div style={{
+      minHeight: 'calc(100vh - 56px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '24px',
-      position: 'relative'
+      background: 'var(--bg-primary)'
     }}>
-      <div className="bg-glow-orb" style={{ top: '10%', right: '20%', background: 'var(--accent-tertiary)' }} />
-
-      <div className="glass-card animate-fade-in-up" style={{
-        padding: '40px',
+      <div className="panel-card" style={{
+        padding: '36px',
         width: '100%',
-        maxWidth: '420px',
-        position: 'relative',
-        zIndex: 1
+        maxWidth: '440px',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border-medium)',
+        borderRadius: '10px'
       }}>
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <span style={{ fontSize: '2.5rem' }}>🎯</span>
-          <h1 style={{
-            fontSize: '1.6rem',
-            fontWeight: 800,
-            marginTop: '12px',
-            letterSpacing: '-0.02em'
+        {/* Header */}
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.6px',
+            color: 'var(--primary)',
+            marginBottom: '4px'
           }}>
-            Create Account
+            New Account
+          </div>
+          <h1 style={{
+            fontSize: '1.4rem',
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            color: 'var(--text-primary)'
+          }}>
+            Create Student Profile
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '6px' }}>
-            Start your coding reward journey
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '4px' }}>
+            Set up your credentials to earn verifiable coding rewards.
           </p>
         </div>
 
         {error && (
           <div style={{
-            padding: '12px 16px',
-            borderRadius: '10px',
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            color: '#f87171',
-            fontSize: '0.85rem',
-            marginBottom: '20px'
+            padding: '10px 14px',
+            borderRadius: '6px',
+            background: 'var(--danger-subtle)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger)',
+            fontSize: '0.82rem',
+            marginBottom: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}>
-            {error}
+            <span>⚠</span>
+            <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '5px', display: 'block' }}>
               Full Name
             </label>
             <input
               type="text"
               className="input-field"
-              placeholder="John Doe"
+              placeholder="e.g. Chaitanya Reddy"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -101,13 +114,13 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
-              Email
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '5px', display: 'block' }}>
+              Email Address
             </label>
             <input
               type="email"
               className="input-field"
-              placeholder="you@example.com"
+              placeholder="name@pesitm.edu"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -115,7 +128,7 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '5px', display: 'block' }}>
               Password
             </label>
             <input
@@ -129,7 +142,7 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '5px', display: 'block' }}>
               Confirm Password
             </label>
             <input
@@ -146,23 +159,23 @@ export default function RegisterPage() {
             type="submit"
             className="btn-primary"
             disabled={loading}
-            style={{ marginTop: '8px', width: '100%', padding: '14px' }}
+            style={{ marginTop: '6px', width: '100%', padding: '10px' }}
           >
-            {loading ? 'Creating account...' : 'Create Account →'}
+            {loading ? 'Creating Profile...' : 'Create Account'}
           </button>
         </form>
 
-        <p style={{
+        <div style={{
           textAlign: 'center',
-          marginTop: '24px',
-          fontSize: '0.85rem',
+          marginTop: '20px',
+          fontSize: '0.82rem',
           color: 'var(--text-secondary)'
         }}>
           Already have an account?{' '}
-          <Link href="/login" style={{ color: 'var(--accent-primary)', fontWeight: 600, textDecoration: 'none' }}>
-            Login
+          <Link href="/login" style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
+            Sign in
           </Link>
-        </p>
+        </div>
       </div>
     </div>
   );

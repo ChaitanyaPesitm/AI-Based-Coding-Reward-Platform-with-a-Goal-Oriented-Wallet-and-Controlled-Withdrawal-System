@@ -139,7 +139,7 @@ const initialProblems = [
 
 const demoUsers = [
   { name: 'Admin User', email: 'admin@coderward.com', password: 'Admin@Code2026!', isAdmin: true, totalPointsEarned: 1250, problemsSolved: 12 },
-  { name: 'Demo Student', email: 'student@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 10000, problemsSolved: 15 },
+  { name: 'Demo Student', email: 'student@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 0, problemsSolved: 0 },
   { name: 'Rahul Sharma', email: 'rahul@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 850, problemsSolved: 8 },
   { name: 'Deeksha Patel', email: 'deeksha@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 1100, problemsSolved: 10 },
   { name: 'Anish Kumar', email: 'anish@example.com', password: 'Student@Code2026!', isAdmin: false, totalPointsEarned: 620, problemsSolved: 6 }
@@ -178,34 +178,33 @@ const autoSeed = async () => {
       console.log(`✅ Auto-Seeded ${initialAds.length} ads`);
     }
 
-    // Seed a completed goal for the demo student so withdrawal can be demoed
+    // Seed an active 0-point goal for demo student (remove 100% completion points)
     const demoStudent = await User.findOne({ email: 'student@example.com' });
     if (demoStudent) {
-      if (demoStudent.totalPointsEarned < 10000) {
-        demoStudent.totalPointsEarned = 10000;
-        demoStudent.problemsSolved = Math.max(demoStudent.problemsSolved, 15);
+      if (demoStudent.totalPointsEarned === 10000) {
+        demoStudent.totalPointsEarned = 0;
+        demoStudent.problemsSolved = 0;
         await demoStudent.save();
       }
       const demoGoal = await Goal.findOne({ user: demoStudent._id });
-      if (demoGoal && (demoGoal.status !== 'active' || demoGoal.currentPoints < demoGoal.targetAmount)) {
-        if (demoGoal.targetAmount < 10000) {
-          demoGoal.targetAmount = 10000;
+      if (demoGoal) {
+        if (demoGoal.currentPoints === demoGoal.targetAmount && demoGoal.targetAmount === 10000) {
+          demoGoal.currentPoints = 0;
+          demoGoal.status = 'active';
+          await demoGoal.save();
+          console.log(`🎯 Reset demo student goal to 0 points (0%)`);
         }
-        demoGoal.currentPoints = demoGoal.targetAmount;
-        demoGoal.status = 'active';
-        await demoGoal.save();
-        console.log(`🎯 Demo student goal set to active + 100%`);
-      } else if (!demoGoal) {
+      } else {
         await Goal.create({
           user: demoStudent._id,
           title: 'Buy a Laptop',
           description: 'Save up for a new coding laptop',
           category: 'laptop',
           targetAmount: 10000,
-          currentPoints: 10000,
+          currentPoints: 0,
           status: 'active'
         });
-        console.log(`🎯 Auto-Seeded completed goal for demo student (student@example.com)`);
+        console.log(`🎯 Auto-Seeded active goal for demo student (student@example.com)`);
       }
 
       // Clear any stale pending/verified withdrawals so re-demo works each boot

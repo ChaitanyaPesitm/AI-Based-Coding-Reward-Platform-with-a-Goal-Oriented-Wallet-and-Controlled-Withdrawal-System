@@ -3,6 +3,8 @@ const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const User = require('./models/User');
 const Problem = require('./models/Problem');
+const Goal = require('./models/Goal');
+const Transaction = require('./models/Transaction');
 
 dotenv.config();
 
@@ -425,8 +427,67 @@ const seedDB = async () => {
     const students = await User.create(seedStudents);
     console.log(`✅ Seeded ${students.length} students`);
 
+    // Create Demo Student with 100% Completed Goal for live demo presentation
+    let demoStudent = await User.findOne({ email: 'demo@codereward.com' });
+    if (demoStudent) {
+      await User.deleteOne({ _id: demoStudent._id });
+      await Goal.deleteMany({ user: demoStudent._id });
+      await Transaction.deleteMany({ user: demoStudent._id });
+    }
+
+    demoStudent = await User.create({
+      name: 'Chaitanya (Demo Student)',
+      email: 'demo@codereward.com',
+      password: 'demo123',
+      isAdmin: false,
+      totalPointsEarned: 12500,
+      problemsSolved: 15,
+      currentStreak: 7,
+      longestStreak: 12,
+      badges: ['first_solve', 'problems_10', 'points_1000', 'points_5000', 'points_10000', 'streak_7']
+    });
+
+    const demoGoal = await Goal.create({
+      user: demoStudent._id,
+      title: 'Dell XPS Development Laptop Target',
+      description: 'Milestone points target for final year engineering development setup.',
+      category: 'laptop',
+      targetAmount: 10000,
+      currentPoints: 10000,
+      status: 'active'
+    });
+
+    await Transaction.create([
+      {
+        user: demoStudent._id,
+        type: 'earn',
+        amount: 5000,
+        source: 'submission',
+        description: 'Verified Solution: Dynamic Programming Milestone',
+        balanceAfter: 5000
+      },
+      {
+        user: demoStudent._id,
+        type: 'earn',
+        amount: 5000,
+        source: 'submission',
+        description: 'Verified Solution: Graph Theory & Algorithms',
+        balanceAfter: 10000
+      },
+      {
+        user: demoStudent._id,
+        type: 'earn',
+        amount: 2500,
+        source: 'submission',
+        description: 'Verified Solution: Advanced Data Structures',
+        balanceAfter: 12500
+      }
+    ]);
+
+    console.log('👤 Demo Student created (demo@codereward.com / demo123) with 100% Goal Achievement!');
+
     console.log('\n🎉 Database seeded successfully!');
-    console.log(`📊 Total: ${seedProblems.length} problems, ${students.length + 1} users`);
+    console.log(`📊 Total: ${seedProblems.length} problems, ${students.length + 2} users`);
     process.exit(0);
   } catch (error) {
     console.error('❌ Seeding failed:', error);

@@ -3,7 +3,6 @@ import { AuthProvider } from '@/lib/AuthContext';
 import { ThemeProvider } from '@/lib/ThemeContext';
 import Navbar from '@/components/Navbar';
 import NotificationListener from '@/components/NotificationListener';
-import InlineScript from '@/components/InlineScript';
 import StyledJsxRegistry from './registry';
 
 export const metadata = {
@@ -16,10 +15,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
-        <InlineScript
-          html={`
-            (function(){try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}})()
-          `}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("theme");if(t){document.documentElement.setAttribute("data-theme",t);}}catch(e){}`,
+          }}
         />
       </head>
       <body>

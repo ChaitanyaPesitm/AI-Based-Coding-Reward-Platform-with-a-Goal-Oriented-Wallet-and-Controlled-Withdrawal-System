@@ -32,7 +32,7 @@ export default function SolveProblemPage() {
   const [hintUnlocked, setHintUnlocked] = useState(false);
   const [aiHintText, setAiHintText] = useState('');
 
-  // Proctoring state (violations are recorded server-side by the overlay)
+  // Proctoring state
   const [proctoringEnabled, setProctoringEnabled] = useState(true);
 
   const fetchProblem = async () => {
@@ -57,7 +57,6 @@ export default function SolveProblemPage() {
 
   useEffect(() => {
     if (user && params.id) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchProblem();
     }
   }, [user, params.id]);
@@ -73,14 +72,13 @@ export default function SolveProblemPage() {
           clearInterval(interval);
           setAdWatching(false);
           setHintUnlocked(true);
-          // Record the unlock server-side so the +5% bonus is applied on the next submission
           problemsAPI.unlockHint(params.id)
             .then(res => {
               setAiHintText(res.data.data?.hint || aiHintText);
             })
             .catch(() => {
               setAiHintText(
-                `💡 AI Hint for "${problem.title}": Pay special attention to edge cases (e.g. empty input or boundary values). Break down your solution logic into distinct steps!`
+                `Algorithmic Suggestion: Validate boundary constraints (e.g. empty or negative inputs). Maintain separation between state tracking and result aggregation.`
               );
             });
           return 0;
@@ -103,7 +101,7 @@ export default function SolveProblemPage() {
       setResult(res.data.data);
     } catch (err) {
       setResult({
-        error: err.response?.data?.message || 'Submission failed. Please try again.'
+        error: err.response?.data?.message || 'Submission failed. Please check runtime errors.'
       });
     } finally {
       setSubmitting(false);
@@ -112,8 +110,9 @@ export default function SolveProblemPage() {
 
   if (authLoading || loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 56px)' }}>
         <div className="spinner" />
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Initializing IDE & sandbox environment...</span>
       </div>
     );
   }
@@ -121,117 +120,131 @@ export default function SolveProblemPage() {
   if (!user || !problem) return null;
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' }}>
-      {/* Top Bar */}
+    <div style={{ minHeight: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
+      {/* Top IDE Toolbar */}
       <div style={{
-        padding: '12px 24px',
+        padding: '10px 20px',
         background: 'var(--bg-secondary)',
-        borderBottom: '1px solid var(--border-subtle)',
+        borderBottom: '1px solid var(--border-medium)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: '12px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             onClick={() => router.push('/problems')}
             className="btn-secondary"
-            style={{ padding: '6px 14px', fontSize: '0.8rem' }}
+            style={{ padding: '5px 10px', fontSize: '0.78rem' }}
           >
-            ← Back
+            ← Catalog
           </button>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>{problem.title}</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            {problem.title}
+          </h2>
           <span className={`badge badge-${problem.difficulty}`}>{problem.difficulty}</span>
           <span className={`badge-lang badge-${problem.language}`}>{problem.language}</span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Rewarded Ad AI Hint Button */}
+          {/* Rewarded Ad Hint Trigger */}
           <button
             onClick={() => setShowAdModal(true)}
             style={{
-              padding: '6px 16px',
-              borderRadius: '8px',
-              border: '1px solid rgba(251, 191, 36, 0.4)',
-              background: 'rgba(251, 191, 36, 0.1)',
-              color: '#fbbf24',
-              fontSize: '0.8rem',
-              fontWeight: 700,
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: hintUnlocked ? '1px solid var(--success-border)' : '1px solid var(--warning-border)',
+              background: hintUnlocked ? 'var(--success-subtle)' : 'var(--warning-subtle)',
+              color: hintUnlocked ? 'var(--easy)' : 'var(--warning)',
+              fontSize: '0.78rem',
+              fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px'
             }}
           >
-            🎬 {hintUnlocked ? 'View AI Hint' : 'Unlock AI Hint (+5% Bonus)'}
+            <span>{hintUnlocked ? '✓' : '💡'}</span>
+            <span>{hintUnlocked ? 'View AI Hint' : 'Unlock AI Hint (+5% Bonus)'}</span>
           </button>
 
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Base Points: <strong style={{ color: 'var(--accent-primary)' }}>{problem.basePoints}</strong>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Base Value: <strong style={{ color: 'var(--text-primary)' }}>{problem.basePoints} pts</strong>
           </span>
+
           <button
             className="btn-primary"
             onClick={handleSubmit}
             disabled={submitting || !code.trim()}
-            style={{ padding: '8px 24px', fontSize: '0.85rem' }}
+            style={{ padding: '6px 18px', fontSize: '0.82rem' }}
           >
-            {submitting ? '⏳ Evaluating...' : '▶ Submit Code'}
+            {submitting ? 'Compiling & Evaluating...' : 'Execute & Submit'}
           </button>
         </div>
       </div>
 
-      {/* Main Content: Split Panel */}
+      {/* Main Split Panel */}
       <div style={{
         flex: 1,
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
         minHeight: 0
       }}>
-        {/* Left: Problem Description */}
+        {/* Left Pane: Instructions & Results */}
         <div style={{
-          borderRight: '1px solid var(--border-subtle)',
-          overflow: 'auto',
+          borderRight: '1px solid var(--border-medium)',
+          overflowY: 'auto',
           padding: '24px',
           background: 'var(--bg-primary)'
         }}>
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '16px' }}>{problem.title}</h3>
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>
+              Problem Specification
+            </div>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+              {problem.title}
+            </h3>
+          </div>
 
           <div style={{
-            fontSize: '0.9rem',
-            lineHeight: 1.8,
+            fontSize: '0.875rem',
+            lineHeight: 1.65,
             color: 'var(--text-secondary)',
             whiteSpace: 'pre-wrap'
           }}>
             {problem.description}
           </div>
 
-          {/* AI Hint Display Box */}
+          {/* AI Hint Box */}
           {hintUnlocked && aiHintText && (
             <div style={{
-              marginTop: '20px',
-              padding: '16px',
-              borderRadius: '12px',
-              background: 'rgba(251, 191, 36, 0.1)',
-              border: '1px solid rgba(251, 191, 36, 0.3)',
-              color: '#fef08a'
+              marginTop: '18px',
+              padding: '14px 16px',
+              borderRadius: '8px',
+              background: 'var(--warning-subtle)',
+              border: '1px solid var(--warning-border)',
+              color: 'var(--text-primary)'
             }}>
-              <h4 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '4px' }}>💡 AI Hint Unlocked!</h4>
-              <p style={{ fontSize: '0.85rem', lineHeight: 1.6 }}>{aiHintText}</p>
-              <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>
-                ✨ 5% Bonus Point Multiplier Activated for your next submission!
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                AI Hint Active (+5% Bonus Multiplier Applied)
               </div>
+              <p style={{ fontSize: '0.82rem', lineHeight: 1.55 }}>{aiHintText}</p>
             </div>
           )}
 
+          {/* Constraints */}
           {problem.constraints && (
             <div style={{ marginTop: '20px' }}>
-              <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-primary)' }}>Constraints</h4>
+              <h4 style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                Constraints
+              </h4>
               <div style={{
-                padding: '12px',
-                borderRadius: '8px',
+                padding: '10px 14px',
+                borderRadius: '6px',
                 background: 'var(--bg-secondary)',
-                fontSize: '0.85rem',
+                border: '1px solid var(--border-subtle)',
+                fontSize: '0.8rem',
                 fontFamily: 'JetBrains Mono, monospace',
                 color: 'var(--text-secondary)'
               }}>
@@ -240,41 +253,49 @@ export default function SolveProblemPage() {
             </div>
           )}
 
+          {/* Sample Input */}
           {problem.sampleInput && (
-            <div style={{ marginTop: '20px' }}>
-              <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-primary)' }}>Sample Input</h4>
+            <div style={{ marginTop: '16px' }}>
+              <h4 style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                Sample Input
+              </h4>
               <pre style={{
-                padding: '12px',
-                borderRadius: '8px',
+                padding: '10px 14px',
+                borderRadius: '6px',
                 background: 'var(--bg-secondary)',
-                fontSize: '0.85rem',
+                border: '1px solid var(--border-subtle)',
+                fontSize: '0.8rem',
                 fontFamily: 'JetBrains Mono, monospace',
-                color: 'var(--easy)',
-                overflow: 'auto'
+                color: 'var(--text-primary)',
+                overflowX: 'auto'
               }}>
                 {problem.sampleInput}
               </pre>
             </div>
           )}
 
+          {/* Sample Output */}
           {problem.sampleOutput && (
             <div style={{ marginTop: '16px' }}>
-              <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-primary)' }}>Sample Output</h4>
+              <h4 style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                Sample Output
+              </h4>
               <pre style={{
-                padding: '12px',
-                borderRadius: '8px',
+                padding: '10px 14px',
+                borderRadius: '6px',
                 background: 'var(--bg-secondary)',
-                fontSize: '0.85rem',
+                border: '1px solid var(--border-subtle)',
+                fontSize: '0.8rem',
                 fontFamily: 'JetBrains Mono, monospace',
-                color: 'var(--accent-primary)',
-                overflow: 'auto'
+                color: 'var(--text-primary)',
+                overflowX: 'auto'
               }}>
                 {problem.sampleOutput}
               </pre>
             </div>
           )}
 
-          {/* Submission Result */}
+          {/* Submission Evaluation Results */}
           {result && (
             <div style={{ marginTop: '24px' }}>
               <ResultPanel result={result} />
@@ -282,32 +303,32 @@ export default function SolveProblemPage() {
           )}
         </div>
 
-        {/* Right: Code Editor */}
-        <div style={{ display: 'flex', flexDirection: 'column', background: '#1e1e1e' }}>
+        {/* Right Pane: Code Editor */}
+        <div style={{ display: 'flex', flexDirection: 'column', background: '#0f172a' }}>
           <div style={{
             padding: '8px 16px',
             background: 'var(--bg-secondary)',
-            borderBottom: '1px solid var(--border-subtle)',
+            borderBottom: '1px solid var(--border-medium)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between'
           }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              📝 {problem.language.toUpperCase()} Editor
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Monaco Editor • {problem.language.toUpperCase()}
             </span>
             <button
               onClick={() => setCode(problem.starterCode || '')}
               style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '3px 8px',
+                borderRadius: '4px',
                 border: '1px solid var(--border-medium)',
                 background: 'transparent',
                 color: 'var(--text-muted)',
-                fontSize: '0.75rem',
+                fontSize: '0.72rem',
                 cursor: 'pointer'
               }}
             >
-              ↺ Reset Code
+              Reset Starter Code
             </button>
           </div>
 
@@ -319,17 +340,16 @@ export default function SolveProblemPage() {
               value={code}
               onChange={(value) => setCode(value || '')}
               options={{
-                fontSize: 14,
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                fontSize: 13,
+                fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
-                padding: { top: 16 },
+                padding: { top: 12 },
                 lineNumbers: 'on',
                 roundedSelection: true,
                 automaticLayout: true,
                 tabSize: 4,
-                wordWrap: 'on',
-                suggestOnTriggerCharacters: true
+                wordWrap: 'on'
               }}
             />
           </div>
@@ -339,56 +359,71 @@ export default function SolveProblemPage() {
       {/* Rewarded Ad Hint Modal */}
       {showAdModal && (
         <div className="modal-overlay" onClick={() => !adWatching && setShowAdModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '500px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '8px' }}>
-              🎬 Rewarded Ad — Unlock AI Hint
-            </h3>
+          <div className="modal-content" style={{ maxWidth: '460px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.5px' }}>
+                Assessment Assistance
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                Unlock Gemini AI Hint
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Review this verified academic sponsor notice for 5 seconds to unlock an algorithmic hint and a +5% reward bonus.
+              </p>
+            </div>
 
             {!hintUnlocked ? (
               <>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  Watch this 5-second sponsored ad to unlock a personalized AI Hint & earn a 5% bonus point multiplier!
-                </p>
-
-                {/* Simulated Sponsored Ad Player */}
                 <div style={{
-                  padding: '30px 20px',
-                  borderRadius: '16px',
-                  background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
-                  border: '2px dashed #6366f1',
-                  marginBottom: '20px'
+                  padding: '20px 16px',
+                  borderRadius: '8px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-medium)',
+                  marginBottom: '16px',
+                  textAlign: 'center'
                 }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>💻 🚀</div>
-                  <h4 style={{ color: '#a5f3fc', fontWeight: 700 }}>Amazon & Coursera Tech Deals</h4>
-                  <p style={{ fontSize: '0.8rem', color: '#c7d2fe', marginTop: '4px' }}>
-                    Upgrade your laptop & get certified in Full-Stack AI Development!
-                  </p>
+                  <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>Sponsored Sponsor Notice</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: '4px' }}>
+                    Student Cloud & Development Tooling Grants
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Complimentary developer credits for verified VTU computer science students.
+                  </div>
 
                   {adWatching && (
-                    <div style={{ marginTop: '16px', fontSize: '1.2rem', fontWeight: 800, color: '#fbbf24' }}>
-                      ⏳ Watching Ad... {adTimer}s
+                    <div style={{ marginTop: '14px', fontSize: '0.95rem', fontWeight: 700, color: 'var(--warning)' }}>
+                      Verifying notice... {adTimer}s remaining
                     </div>
                   )}
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '10px' }}>
                   <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowAdModal(false)} disabled={adWatching}>
-                    Close
+                    Cancel
                   </button>
                   <button className="btn-primary" style={{ flex: 1 }} onClick={handleStartAd} disabled={adWatching}>
-                    {adWatching ? `Watching (${adTimer}s)` : '▶ Start Rewarded Ad'}
+                    {adWatching ? `Verifying (${adTimer}s)` : 'Begin 5s Verification'}
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <div style={{ fontSize: '3rem', margin: '12px 0' }}>🎉</div>
-                <h4 style={{ color: '#10b981', fontWeight: 800, marginBottom: '8px' }}>AI Hint Unlocked!</h4>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  {aiHintText}
-                </p>
+                <div style={{
+                  padding: '14px',
+                  borderRadius: '8px',
+                  background: 'var(--success-subtle)',
+                  border: '1px solid var(--success-border)',
+                  marginBottom: '16px'
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--easy)' }}>
+                    ✓ AI Hint Activated
+                  </div>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.5 }}>
+                    {aiHintText}
+                  </p>
+                </div>
                 <button className="btn-primary" style={{ width: '100%' }} onClick={() => setShowAdModal(false)}>
-                  Got It! Return to Code Editor
+                  Return to Workspace
                 </button>
               </>
             )}
@@ -418,13 +453,15 @@ function ResultPanel({ result }) {
   if (result.error) {
     return (
       <div style={{
-        padding: '20px',
-        borderRadius: '12px',
-        background: 'rgba(239, 68, 68, 0.1)',
-        border: '1px solid rgba(239, 68, 68, 0.2)'
+        padding: '14px 18px',
+        borderRadius: '8px',
+        background: 'var(--danger-subtle)',
+        border: '1px solid var(--danger-border)'
       }}>
-        <h4 style={{ color: '#f87171', fontWeight: 700, marginBottom: '8px' }}>❌ Error</h4>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{result.error}</p>
+        <h4 style={{ color: 'var(--danger)', fontWeight: 700, fontSize: '0.875rem', marginBottom: '4px' }}>
+          Execution Error
+        </h4>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{result.error}</p>
       </div>
     );
   }
@@ -435,12 +472,13 @@ function ResultPanel({ result }) {
   const isAccepted = sub?.status === 'accepted';
 
   return (
-    <div className="animate-fade-in-up" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {/* Status banner */}
       <div style={{
-        padding: '20px',
-        borderRadius: '12px',
-        background: isAccepted ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-        border: `1px solid ${isAccepted ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
+        padding: '16px',
+        borderRadius: '8px',
+        background: isAccepted ? 'var(--success-subtle)' : 'var(--warning-subtle)',
+        border: `1px solid ${isAccepted ? 'var(--success-border)' : 'var(--warning-border)'}`,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -448,96 +486,81 @@ function ResultPanel({ result }) {
         gap: '12px'
       }}>
         <div>
-          <h4 style={{
-            color: isAccepted ? 'var(--easy)' : 'var(--medium)',
+          <div style={{
+            color: isAccepted ? 'var(--easy)' : 'var(--warning)',
             fontWeight: 700,
-            fontSize: '1.1rem'
+            fontSize: '1rem'
           }}>
-            {isAccepted ? '✅ Accepted!' : `⚠️ ${sub?.status?.replace(/_/g, ' ').toUpperCase()}`}
-          </h4>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
-            Test Cases: {sub?.testCasesPassed}/{sub?.totalTestCases} passed
-            {sub?.executionTime > 0 && <span style={{ marginLeft: '10px' }}>⏱️ Avg exec: {sub.executionTime}ms</span>}
-            {sub?.proctorFlagged && <span style={{ marginLeft: '10px', color: 'var(--hard)' }}>🛡️ {sub.proctorViolations} proctor violation(s)</span>}
+            {isAccepted ? '✓ Status: Accepted' : `⚠ Status: ${sub?.status?.replace(/_/g, ' ').toUpperCase()}`}
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '2px' }}>
+            Passed: {sub?.testCasesPassed}/{sub?.totalTestCases} Test Cases
+            {sub?.executionTime > 0 && <span style={{ marginLeft: '8px' }}>• Execution Time: {sub.executionTime}ms</span>}
+            {sub?.proctorFlagged && <span style={{ marginLeft: '8px', color: 'var(--hard)' }}>• Flagged: {sub.proctorViolations} violation(s)</span>}
           </p>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 900 }} className="gradient-text">
-            +{result.pointsEarned}
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)' }}>
+            +{result.pointsEarned} pts
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>points earned</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Credits Awarded</div>
         </div>
       </div>
 
+      {/* AI Code Evaluation Diagnostic */}
       {ai && (
-        <div style={{
-          padding: '20px',
-          borderRadius: '12px',
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border-subtle)'
-        }}>
-          <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>🤖 AI Code Evaluation</h4>
+        <div className="panel-card" style={{ padding: '16px' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '12px' }}>
+            Google Gemini Diagnostic Breakdown
+          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-            <div style={{ textAlign: 'center', padding: '12px', borderRadius: '10px', background: 'var(--bg-card)' }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: ai.score >= 70 ? 'var(--easy)' : ai.score >= 40 ? 'var(--medium)' : 'var(--hard)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px', marginBottom: '14px' }}>
+            <div style={{ textAlign: 'center', padding: '10px', borderRadius: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: ai.score >= 70 ? 'var(--easy)' : ai.score >= 40 ? 'var(--warning)' : 'var(--hard)' }}>
                 {ai.score}/100
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>Overall Score</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '2px' }}>Overall Quality</div>
             </div>
-            <div style={{ textAlign: 'center', padding: '12px', borderRadius: '10px', background: 'var(--bg-card)' }}>
-              <div style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-primary)' }}>
+
+            <div style={{ textAlign: 'center', padding: '10px', borderRadius: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-primary)' }}>
                 {ai.timeComplexity}
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>Time Complexity</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '2px' }}>Time Complexity</div>
               {ai.complexityComparison?.time && (
-                <div style={{ fontSize: '0.65rem', marginTop: '4px', color: ai.complexityComparison.time.isOptimal ? 'var(--easy)' : 'var(--hard)', fontWeight: 600 }}>
-                  {ai.complexityComparison.time.isOptimal ? '✓ Optimal' : '⚠ Suboptimal'}
+                <div style={{ fontSize: '0.65rem', marginTop: '2px', color: ai.complexityComparison.time.isOptimal ? 'var(--easy)' : 'var(--warning)', fontWeight: 600 }}>
+                  {ai.complexityComparison.time.isOptimal ? 'Optimal' : 'Suboptimal'}
                 </div>
               )}
             </div>
-            <div style={{ textAlign: 'center', padding: '12px', borderRadius: '10px', background: 'var(--bg-card)' }}>
-              <div style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-secondary)' }}>
+
+            <div style={{ textAlign: 'center', padding: '10px', borderRadius: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-primary)' }}>
                 {ai.spaceComplexity}
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>Space Complexity</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '2px' }}>Space Complexity</div>
               {ai.complexityComparison?.space && (
-                <div style={{ fontSize: '0.65rem', marginTop: '4px', color: ai.complexityComparison.space.isOptimal ? 'var(--easy)' : 'var(--hard)', fontWeight: 600 }}>
-                  {ai.complexityComparison.space.isOptimal ? '✓ Optimal' : '⚠ Suboptimal'}
+                <div style={{ fontSize: '0.65rem', marginTop: '2px', color: ai.complexityComparison.space.isOptimal ? 'var(--easy)' : 'var(--warning)', fontWeight: 600 }}>
+                  {ai.complexityComparison.space.isOptimal ? 'Optimal' : 'Suboptimal'}
                 </div>
               )}
             </div>
           </div>
 
-          {ai.complexityComparison && (
-            <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {!ai.complexityComparison.time.isOptimal && (
-                <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)', fontSize: '0.8rem', color: 'var(--medium)' }}>
-                  ⏱️ {ai.complexityComparison.time.message}
-                </div>
-              )}
-              {!ai.complexityComparison.space.isOptimal && (
-                <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)', fontSize: '0.8rem', color: 'var(--medium)' }}>
-                  💾 {ai.complexityComparison.space.message}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <QualityBar label="Code Quality" value={ai.codeQuality} />
-            <QualityBar label="Efficiency" value={ai.efficiency} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <QualityBar label="Code Quality Score" value={ai.codeQuality} />
+            <QualityBar label="Algorithmic Efficiency" value={ai.efficiency} />
           </div>
 
           {ai.suggestions && (
-            <div style={{ marginTop: '14px', padding: '12px', borderRadius: '8px', background: 'var(--bg-card)', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              💡 <strong>Suggestion:</strong> {ai.suggestions}
+            <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              <strong>Optimization Recommendation:</strong> {ai.suggestions}
             </div>
           )}
 
           {ai.strengths && (
-            <div style={{ marginTop: '8px', padding: '12px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.05)', fontSize: '0.85rem', color: 'var(--easy)', lineHeight: 1.6 }}>
-              ✨ <strong>Strengths:</strong> {ai.strengths}
+            <div style={{ marginTop: '8px', padding: '10px 12px', borderRadius: '6px', background: 'var(--success-subtle)', border: '1px solid var(--success-border)', fontSize: '0.8rem', color: 'var(--easy)', lineHeight: 1.5 }}>
+              <strong>Strengths Identified:</strong> {ai.strengths}
             </div>
           )}
         </div>
@@ -545,15 +568,15 @@ function ResultPanel({ result }) {
 
       {breakdown && (
         <div style={{
-          padding: '16px',
-          borderRadius: '12px',
+          padding: '12px 14px',
+          borderRadius: '8px',
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-subtle)',
-          fontSize: '0.8rem',
+          fontSize: '0.75rem',
           fontFamily: 'JetBrains Mono, monospace',
           color: 'var(--text-muted)'
         }}>
-          <strong style={{ color: 'var(--text-secondary)' }}>Points Formula:</strong>
+          <strong style={{ color: 'var(--text-secondary)' }}>Ledger Valuation Formula:</strong>
           <br />
           {breakdown.formula}
         </div>
@@ -563,20 +586,20 @@ function ResultPanel({ result }) {
 }
 
 function QualityBar({ label, value }) {
-  const color = value >= 70 ? 'var(--easy)' : value >= 40 ? 'var(--medium)' : 'var(--hard)';
+  const color = value >= 70 ? 'var(--easy)' : value >= 40 ? 'var(--warning)' : 'var(--hard)';
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{label}</span>
-        <span style={{ fontSize: '0.8rem', fontWeight: 600, color }}>{value}/100</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{label}</span>
+        <span style={{ fontSize: '0.75rem', fontWeight: 600, color }}>{value}/100</span>
       </div>
-      <div style={{ height: '6px', background: 'var(--bg-card)', borderRadius: '3px', overflow: 'hidden' }}>
+      <div style={{ height: '6px', background: 'var(--bg-secondary)', borderRadius: '3px', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
         <div style={{
           height: '100%',
           width: `${value}%`,
           background: color,
           borderRadius: '3px',
-          transition: 'width 0.8s ease'
+          transition: 'width 0.5s ease'
         }} />
       </div>
     </div>

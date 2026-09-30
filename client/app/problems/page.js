@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { problemsAPI, adsAPI } from '@/lib/api';
@@ -10,10 +10,10 @@ export default function ProblemsPage() {
   const router = useRouter();
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ difficulty: '', language: '' });
+  const [filter, setFilter] = useState({ difficulty: '', language: '', search: '' });
   const [sponsoredChallenges, setSponsoredChallenges] = useState([]);
 
-  const fetchProblems = async () => {
+  const fetchProblems = useCallback(async () => {
     try {
       const params = {};
       if (filter.difficulty) params.difficulty = filter.difficulty;
@@ -25,7 +25,7 @@ export default function ProblemsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter.difficulty, filter.language]);
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/login');
@@ -33,97 +33,147 @@ export default function ProblemsPage() {
 
   useEffect(() => {
     if (user) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchProblems();
       adsAPI.getSponsoredChallenges()
         .then(res => setSponsoredChallenges(res.data.data || []))
         .catch(() => {});
     }
-  }, [user, filter]);
+  }, [user, fetchProblems]);
 
   if (authLoading || loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 56px)' }}>
         <div className="spinner" />
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Loading challenge catalog...</span>
       </div>
     );
   }
 
   if (!user) return null;
 
+  const filteredProblems = problems.filter(p => {
+    if (filter.search && !p.title.toLowerCase().includes(filter.search.toLowerCase())) {
+      return false;
+    }
+    return true;
+  });
+
   const solvedCount = problems.filter(p => p.solved).length;
 
   return (
-    <div className="bg-grid" style={{ minHeight: 'calc(100vh - 64px)', position: 'relative' }}>
-      <div className="bg-glow-orb" style={{ top: '20%', left: '5%', background: 'var(--accent-secondary)' }} />
-
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '32px 24px', position: 'relative', zIndex: 1 }}>
-        <div className="animate-fade-in-up" style={{ marginBottom: '28px' }}>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-            💻 Coding <span className="gradient-text">Problems</span>
+    <div style={{ minHeight: 'calc(100vh - 56px)', background: 'var(--bg-primary)' }}>
+      <div style={{ maxWidth: '1060px', margin: '0 auto', padding: '28px 20px 60px' }}>
+        
+        {/* Header */}
+        <div style={{
+          marginBottom: '24px',
+          borderBottom: '1px solid var(--border-subtle)',
+          paddingBottom: '16px'
+        }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Curriculum Catalog • Multi-Language Sandbox
+          </div>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+            Coding Challenges & Assessments
           </h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Solve problems to earn reward points. Better code quality = more points!
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '2px' }}>
+            Solve algorithmic problems to earn reward points. Submissions are compiled in a real sandbox and evaluated by Gemini AI.
           </p>
         </div>
 
-        {/* Filters + Stats */}
-        <div className="animate-fade-in-up delay-100" style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <select
-            className="input-field"
-            style={{ width: 'auto', minWidth: '160px' }}
-            value={filter.difficulty}
-            onChange={(e) => setFilter({...filter, difficulty: e.target.value})}
-          >
-            <option value="">All Difficulties</option>
-            <option value="easy">🟢 Easy</option>
-            <option value="medium">🟡 Medium</option>
-            <option value="hard">🔴 Hard</option>
-          </select>
+        {/* Filter Controls Toolbar */}
+        <div style={{
+          display: 'flex',
+          gap: '12px',
+          marginBottom: '20px',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          padding: '12px 16px',
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '8px'
+        }}>
+          {/* Search Input */}
+          <div style={{ flex: '1 1 200px' }}>
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Search problem title..."
+              style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+              value={filter.search}
+              onChange={(e) => setFilter({ ...filter, search: e.target.value })}
+            />
+          </div>
 
-          <select
-            className="input-field"
-            style={{ width: 'auto', minWidth: '160px' }}
-            value={filter.language}
-            onChange={(e) => setFilter({...filter, language: e.target.value})}
-          >
-            <option value="">All Languages</option>
-            <option value="c">C</option>
-            <option value="python">Python</option>
-            <option value="java">Java</option>
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Difficulty:</span>
+            <select
+              className="input-field"
+              style={{ width: 'auto', minWidth: '130px', padding: '6px 12px', fontSize: '0.82rem' }}
+              value={filter.difficulty}
+              onChange={(e) => setFilter({ ...filter, difficulty: e.target.value })}
+            >
+              <option value="">All Difficulties</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
 
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Runtime:</span>
+            <select
+              className="input-field"
+              style={{ width: 'auto', minWidth: '130px', padding: '6px 12px', fontSize: '0.82rem' }}
+              value={filter.language}
+              onChange={(e) => setFilter({ ...filter, language: e.target.value })}
+            >
+              <option value="">All Languages</option>
+              <option value="c">C (GCC)</option>
+              <option value="python">Python 3</option>
+              <option value="java">Java (OpenJDK)</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.82rem' }}>
             {solvedCount > 0 && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--easy)', fontWeight: 600 }}>
-                ✅ {solvedCount} solved
+              <span style={{ color: 'var(--easy)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span>✓</span> {solvedCount} Solved
               </span>
             )}
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{problems.length} problems</span>
+            <span style={{ color: 'var(--text-muted)' }}>
+              {filteredProblems.length} challenge{filteredProblems.length !== 1 ? 's' : ''}
+            </span>
           </div>
         </div>
 
-        {/* Sponsored Challenges */}
+        {/* Sponsored Challenges Row */}
         {sponsoredChallenges.length > 0 && (
-          <div className="animate-fade-in-up delay-200" style={{ marginBottom: '28px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 700 }}>🎁 Sponsored Challenges</h3>
-              <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sponsored</span>
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>
+                Sponsored Industry Challenges
+              </span>
+              <span style={{ fontSize: '0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-muted)' }}>
+                Verified Partner
+              </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '12px' }}>
               {sponsoredChallenges.map(ch => (
-                <div key={ch.id} className="glass-card" style={{ padding: '16px 20px', borderColor: 'rgba(108, 99, 255, 0.2)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '4px' }}>{ch.title}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{ch.description}</div>
-                      <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--easy)', fontWeight: 700 }}>Prize: {ch.prize}</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Deadline: {ch.deadline}</span>
-                      </div>
-                    </div>
+                <div key={ch.id} className="panel-card" style={{ padding: '16px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                    {ch.title}
                   </div>
-                  <div style={{ marginTop: '8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>by {ch.sponsor}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    {ch.description}
+                  </div>
+                  <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem' }}>
+                    <span style={{ color: 'var(--easy)', fontWeight: 600 }}>Prize: {ch.prize}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>Deadline: {ch.deadline}</span>
+                  </div>
+                  <div style={{ marginTop: '6px', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                    Sponsored by {ch.sponsor}
+                  </div>
                 </div>
               ))}
             </div>
@@ -131,74 +181,71 @@ export default function ProblemsPage() {
         )}
 
         {/* Problems List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {problems.length > 0 ? (
-            problems.map((problem, i) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {filteredProblems.length > 0 ? (
+            filteredProblems.map((problem) => (
               <Link key={problem._id} href={`/problems/${problem._id}`} style={{ textDecoration: 'none' }}>
                 <div
-                  className="glass-card animate-fade-in-up"
+                  className="panel-card"
                   style={{
-                    padding: '20px 24px',
+                    padding: '14px 18px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     cursor: 'pointer',
-                    animationDelay: `${i * 50}ms`,
-                    opacity: 0,
                     gap: '16px',
                     flexWrap: 'wrap',
-                    // Subtle green tint for solved problems
-                    borderColor: problem.solved ? 'rgba(16, 185, 129, 0.2)' : undefined
+                    borderLeft: problem.solved ? '3px solid var(--easy)' : '3px solid transparent'
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: '200px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                      <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <div style={{ flex: 1, minWidth: '220px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                      <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                         {problem.title}
                       </h3>
                       {problem.solved && (
                         <span style={{
-                          fontSize: '0.72rem',
+                          fontSize: '0.68rem',
                           fontWeight: 700,
                           color: 'var(--easy)',
-                          background: 'rgba(16, 185, 129, 0.12)',
-                          border: '1px solid rgba(16, 185, 129, 0.25)',
-                          padding: '2px 8px',
-                          borderRadius: '20px',
-                          letterSpacing: '0.3px'
+                          background: 'var(--success-subtle)',
+                          border: '1px solid var(--success-border)',
+                          padding: '1px 6px',
+                          borderRadius: '4px'
                         }}>
                           ✓ Solved
                         </span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                       <span className={`badge badge-${problem.difficulty}`}>{problem.difficulty}</span>
                       <span className={`badge-lang badge-${problem.language}`}>{problem.language}</span>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 800 }} className="gradient-text">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                         {problem.basePoints}
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>base pts</div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                        Base Pts
+                      </div>
                     </div>
-                    {problem.solved ? (
-                      <span style={{ fontSize: '1.2rem', color: 'var(--easy)' }}>✓</span>
-                    ) : (
-                      <span style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>→</span>
-                    )}
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                      →
+                    </div>
                   </div>
                 </div>
               </Link>
             ))
           ) : (
-            <div className="glass-card" style={{ padding: '60px 24px', textAlign: 'center' }}>
-              <span style={{ fontSize: '3rem' }}>📭</span>
-              <h3 style={{ marginTop: '12px', fontWeight: 700 }}>No problems found</h3>
-              <p style={{ color: 'var(--text-secondary)', marginTop: '6px' }}>
-                Try changing the filters or check back later.
+            <div className="panel-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+              <h3 style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                No challenges matched your filter criteria
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '4px' }}>
+                Reset the search, difficulty, or runtime filters to view available problems.
               </p>
             </div>
           )}

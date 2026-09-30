@@ -63,7 +63,6 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (user?.isAdmin) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchData();
     }
   }, [user]);
@@ -74,7 +73,7 @@ export default function AdminPage() {
     try {
       const validTestCases = problemForm.testCases.filter(tc => tc.input && tc.expectedOutput);
       if (validTestCases.length === 0) {
-        setFormError('At least one test case is required');
+        setFormError('At least one test case with input and output is required');
         return;
       }
       await problemsAPI.create({ ...problemForm, testCases: validTestCases });
@@ -157,16 +156,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleAdjustPoints = async (userId, amount, reason) => {
-    if (!amount || !reason) return;
-    try {
-      await adminAPI.adjustPoints({ userId, amount: parseInt(amount), reason });
-      fetchData();
-    } catch (err) {
-      console.error('Adjustment failed:', err);
-    }
-  };
-
   const handleCreateAd = async (e) => {
     e.preventDefault();
     try {
@@ -202,243 +191,546 @@ export default function AdminPage() {
 
   if (authLoading || loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 56px)' }}>
         <div className="spinner" />
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Loading administrator controls...</span>
       </div>
     );
   }
 
   if (!user?.isAdmin) return null;
 
+  const pendingWdCount = withdrawals.filter(w => w.status === 'pending' || w.status === 'verified').length;
+  const openFraudCount = fraudCases.filter(f => f.status === 'open' || f.status === 'flagged').length;
+
   return (
-    <div className="bg-grid" style={{ minHeight: 'calc(100vh - 64px)', position: 'relative' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px', position: 'relative', zIndex: 1 }}>
-        <div className="animate-fade-in-up" style={{ marginBottom: '28px' }}>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-            ⚙️ Admin <span className="gradient-text">Dashboard</span>
+    <div style={{ minHeight: 'calc(100vh - 56px)', background: 'var(--bg-primary)' }}>
+      <div style={{ maxWidth: '1160px', margin: '0 auto', padding: '28px 20px 60px' }}>
+
+        {/* Header */}
+        <div style={{
+          marginBottom: '20px',
+          borderBottom: '1px solid var(--border-subtle)',
+          paddingBottom: '16px'
+        }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Administrative Governance • System Controls
+          </div>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+            Administrator Dashboard
           </h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Manage problems, review withdrawals, and monitor platform activity
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '2px' }}>
+            Audit challenge catalogs, approve financial withdrawals, inspect proctoring violators, and monitor anti-fraud telemetry.
           </p>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          {['problems', 'withdrawals', 'analytics', 'fraud', 'ads', 'violators', 'settings'].map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              style={{
-                padding: '10px 24px',
-                borderRadius: '10px',
-                border: 'none',
-                background: tab === t ? 'var(--accent-primary)' : 'var(--bg-card)',
-                color: tab === t ? 'white' : 'var(--text-secondary)',
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-                transition: 'all 0.2s ease',
-                textTransform: 'capitalize'
-              }}
-            >
-              {t === 'problems' ? '💻 ' : t === 'withdrawals' ? '📋 ' : t === 'analytics' ? '📊 ' : t === 'fraud' ? '🔍 ' : t === 'ads' ? '📣 ' : t === 'violators' ? '🛡️ ' : '⚙️ '}{t}
-              {t === 'withdrawals' && withdrawals.filter(w => w.status === 'pending' || w.status === 'verified').length > 0 && (
-                <span style={{
-                  marginLeft: '6px',
-                  padding: '2px 8px',
-                  borderRadius: '10px',
-                  background: 'var(--hard)',
-                  color: 'white',
-                  fontSize: '0.7rem'
-                }}>
-                  {withdrawals.filter(w => w.status === 'pending' || w.status === 'verified').length}
-                </span>
-              )}
-              {t === 'violators' && violators.length > 0 && (
-                <span style={{
-                  marginLeft: '6px',
-                  padding: '2px 8px',
-                  borderRadius: '10px',
-                  background: 'var(--hard)',
-                  color: 'white',
-                  fontSize: '0.7rem'
-                }}>
-                  {violators.length}
-                </span>
-              )}
-              {t === 'fraud' && fraudCases.filter(f => f.status === 'open' || f.status === 'flagged').length > 0 && (
-                <span style={{
-                  marginLeft: '6px',
-                  padding: '2px 8px',
-                  borderRadius: '10px',
-                  background: 'var(--hard)',
-                  color: 'white',
-                  fontSize: '0.7rem'
-                }}>
-                  {fraudCases.filter(f => f.status === 'open' || f.status === 'flagged').length}
-                </span>
-              )}
-            </button>
-          ))}
+        {/* Tab Navigation Controls */}
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '22px', flexWrap: 'wrap' }}>
+          {[
+            { id: 'problems', label: 'Challenges', badge: null },
+            { id: 'withdrawals', label: 'Withdrawal Approvals', badge: pendingWdCount > 0 ? pendingWdCount : null },
+            { id: 'analytics', label: 'Telemetry & Audit', badge: null },
+            { id: 'fraud', label: 'Anti-Fraud Engine', badge: openFraudCount > 0 ? openFraudCount : null },
+            { id: 'ads', label: 'Sponsored Notices', badge: null },
+            { id: 'violators', label: 'Proctoring Violators', badge: violators.length > 0 ? violators.length : null },
+            { id: 'settings', label: 'Platform Controls', badge: null }
+          ].map(t => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={active ? 'btn-primary' : 'btn-secondary'}
+                style={{ padding: '6px 14px', fontSize: '0.8rem' }}
+              >
+                <span>{t.label}</span>
+                {t.badge && (
+                  <span style={{
+                    marginLeft: '6px',
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    background: active ? '#ffffff' : 'var(--danger)',
+                    color: active ? 'var(--primary)' : '#ffffff',
+                    fontSize: '0.68rem',
+                    fontWeight: 700
+                  }}>
+                    {t.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Problems Tab */}
+        {/* Tab 1: Problems Management */}
         {tab === 'problems' && (
-          <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontWeight: 700 }}>{problems.length} Problems</h3>
-              <button className="btn-primary" onClick={() => setShowAddProblem(true)} style={{ padding: '8px 20px', fontSize: '0.85rem' }}>
-                + Add Problem
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                {problems.length} challenge specifications deployed
+              </span>
+              <button className="btn-primary" onClick={() => setShowAddProblem(true)} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
+                + Deploy New Challenge
               </button>
             </div>
 
-            <div className="glass-card" style={{ overflow: 'auto' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Language</th>
-                    <th>Difficulty</th>
-                    <th>Base Points</th>
-                    <th>Test Cases</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {problems.map(p => (
-                    <tr key={p._id}>
-                      <td style={{ fontWeight: 600 }}>{p.title}</td>
-                      <td><span className={`badge-lang badge-${p.language}`}>{p.language}</span></td>
-                      <td><span className={`badge badge-${p.difficulty}`}>{p.difficulty}</span></td>
-                      <td style={{ fontWeight: 600 }}>{p.basePoints}</td>
-                      <td>{p.testCases?.length || '—'}</td>
+            <div className="panel-card" style={{ padding: '0', overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Challenge Title</th>
+                      <th>Runtime</th>
+                      <th>Difficulty</th>
+                      <th>Base Credits</th>
+                      <th>Test Cases</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {problems.map(p => (
+                      <tr key={p._id}>
+                        <td style={{ fontWeight: 600 }}>{p.title}</td>
+                        <td><span className={`badge-lang badge-${p.language}`}>{p.language}</span></td>
+                        <td><span className={`badge badge-${p.difficulty}`}>{p.difficulty}</span></td>
+                        <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{p.basePoints} pts</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{p.testCases?.length || 0} configured</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Withdrawals Tab */}
+        {/* Tab 2: Withdrawals Approval Queue */}
         {tab === 'withdrawals' && (
-          <div className="animate-fade-in">
-            <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Withdrawal Requests</h3>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>
+                Disbursement Authorization Queue ({withdrawals.length})
+              </h3>
+            </div>
 
             {withdrawals.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {withdrawals.map(w => (
-                  <div key={w._id} className="glass-card" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: '1rem' }}>{w.user?.name || 'User'}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>{w.user?.email}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                          Goal: <strong>{w.goal?.title || 'N/A'}</strong> ({w.goal?.category})
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          Amount: <strong style={{ color: 'var(--easy)' }}>{w.pointsAmount?.toLocaleString()} pts → ₹{w.currencyAmount?.toFixed(2)}</strong>
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          Fraud Score: <span style={{ color: w.fraudScore > 30 ? 'var(--hard)' : 'var(--easy)', fontWeight: 600 }}>{w.fraudScore}/100</span>
-                          {w.fraudDetails?.suspiciousPatterns && ` — ${w.fraudDetails.suspiciousPatterns}`}
-                        </div>
-                        {w.upiId && (
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            UPI: <strong>{w.upiId}</strong>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {withdrawals.map(w => {
+                  const isPending = w.status === 'pending' || w.status === 'verified';
+                  return (
+                    <div key={w._id} className="panel-card" style={{ padding: '16px 18px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                              {w.user?.name || 'Student Candidate'}
+                            </span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              ({w.user?.email})
+                            </span>
                           </div>
-                        )}
-                      </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                        <span className="badge" style={{
-                          background: w.status === 'approved' || w.status === 'completed' ? 'rgba(16, 185, 129, 0.15)' :
-                                      w.status === 'rejected' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                          color: w.status === 'approved' || w.status === 'completed' ? 'var(--easy)' :
-                                 w.status === 'rejected' ? 'var(--hard)' : 'var(--medium)'
-                        }}>
-                          {w.status}
-                        </span>
-
-                        {(w.status === 'pending' || w.status === 'verified') && (
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              onClick={() => handleApprove(w._id)}
-                              style={{
-                                padding: '6px 16px',
-                                borderRadius: '8px',
-                                border: 'none',
-                                background: 'var(--gradient-success)',
-                                color: 'white',
-                                fontWeight: 600,
-                                fontSize: '0.8rem',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              ✓ Approve
-                            </button>
-                            <button className="btn-danger" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => handleReject(w._id)}>
-                              ✕ Reject
-                            </button>
+                          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                            Milestone Target: <strong>{w.goal?.title || 'Milestone'}</strong> ({w.goal?.category})
                           </div>
-                        )}
+
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginTop: '2px' }}>
+                            Disbursement: <strong style={{ color: 'var(--easy)' }}>₹{w.currencyAmount?.toFixed(2)}</strong> ({w.pointsAmount?.toLocaleString()} pts)
+                          </div>
+
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            Anti-Fraud Score: <span style={{ color: w.fraudScore > 30 ? 'var(--hard)' : 'var(--easy)', fontWeight: 600 }}>{w.fraudScore}/100</span>
+                            {w.fraudDetails?.suspiciousPatterns && ` • Diagnostic: ${w.fraudDetails.suspiciousPatterns}`}
+                          </div>
+
+                          {w.upiId && (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                              Beneficiary VPA: <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{w.upiId}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                          <span className="badge" style={{
+                            background: w.status === 'approved' || w.status === 'completed' ? 'var(--success-subtle)' :
+                                        w.status === 'rejected' ? 'var(--danger-subtle)' :
+                                        'var(--warning-subtle)',
+                            color: w.status === 'approved' || w.status === 'completed' ? 'var(--easy)' :
+                                   w.status === 'rejected' ? 'var(--hard)' :
+                                   'var(--warning)',
+                            border: `1px solid ${w.status === 'approved' || w.status === 'completed' ? 'var(--success-border)' : w.status === 'rejected' ? 'var(--danger-border)' : 'var(--warning-border)'}`,
+                            textTransform: 'uppercase'
+                          }}>
+                            {w.status}
+                          </span>
+
+                          {isPending && (
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                className="btn-success"
+                                onClick={() => handleApprove(w._id)}
+                                style={{ padding: '5px 12px', fontSize: '0.78rem' }}
+                              >
+                                ✓ Authorize
+                              </button>
+                              <button
+                                className="btn-danger"
+                                onClick={() => handleReject(w._id)}
+                                style={{ padding: '5px 12px', fontSize: '0.78rem' }}
+                              >
+                                ✕ Deny
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                No withdrawal requests yet.
+              <div className="panel-card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No disbursement requests in the queue.
               </div>
             )}
           </div>
         )}
 
-        {/* Violators Tab */}
-        {tab === 'violators' && (
-          <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-              <h3 style={{ fontWeight: 700 }}>🛡️ Proctoring Violators</h3>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Students with submissions flagged for tab-switching, copy/paste, shortcuts, or idle time
+        {/* Tab 3: Analytics & Ledger Audit */}
+        {tab === 'analytics' && (
+          <div>
+            {analytics ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                {/* 6 Key Stat Tiles */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
+                  <div className="stat-card" style={{ padding: '14px 16px' }}>
+                    <span className="stat-label">Active Users</span>
+                    <span className="stat-value">{analytics.users?.total}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{analytics.users?.newToday} today</span>
+                  </div>
+
+                  <div className="stat-card" style={{ padding: '14px 16px' }}>
+                    <span className="stat-label">Total Submissions</span>
+                    <span className="stat-value">{analytics.submissions?.total}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{analytics.submissions?.today} today</span>
+                  </div>
+
+                  <div className="stat-card" style={{ padding: '14px 16px' }}>
+                    <span className="stat-label">Acceptance Rate</span>
+                    <span className="stat-value" style={{ color: 'var(--easy)' }}>{analytics.submissions?.acceptanceRate}%</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{analytics.submissions?.accepted} accepted</span>
+                  </div>
+
+                  <div className="stat-card" style={{ padding: '14px 16px' }}>
+                    <span className="stat-label">Points Distributed</span>
+                    <span className="stat-value" style={{ color: 'var(--primary)' }}>{analytics.points?.distributed?.toLocaleString()}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{analytics.points?.last7dEarned?.toLocaleString()} past 7d</span>
+                  </div>
+
+                  <div className="stat-card" style={{ padding: '14px 16px' }}>
+                    <span className="stat-label">Points Withdrawn</span>
+                    <span className="stat-value" style={{ color: 'var(--warning)' }}>{analytics.points?.withdrawn?.toLocaleString()}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{analytics.withdrawals?.pending} pending review</span>
+                  </div>
+
+                  <div className="stat-card" style={{ padding: '14px 16px' }}>
+                    <span className="stat-label">AI Fallbacks</span>
+                    <span className="stat-value" style={{ color: analytics.submissions?.aiFailures > 0 ? 'var(--hard)' : 'var(--easy)' }}>
+                      {analytics.submissions?.aiFailures}
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>auto-fallback scored</span>
+                  </div>
+                </div>
+
+                {/* Activity 14d histogram */}
+                {analytics.series?.submissions?.length > 0 && (
+                  <div className="panel-card" style={{ padding: '18px 20px' }}>
+                    <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '12px' }}>
+                      Submission Activity Trajectory (14-Day Window)
+                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '100px', padding: '8px', background: 'var(--bg-secondary)', borderRadius: '6px', overflowX: 'auto', border: '1px solid var(--border-subtle)' }}>
+                      {analytics.series.submissions.map((d, i) => {
+                        const max = Math.max(1, ...analytics.series.submissions.map(x => x.count));
+                        return (
+                          <div key={d.date} title={`${d.date}: ${d.count} submissions`} style={{ flex: '1 0 auto', minWidth: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', alignItems: 'center', gap: '2px' }}>
+                            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{d.count}</div>
+                            <div style={{
+                              width: '100%',
+                              borderRadius: '2px 2px 0 0',
+                              height: `${Math.max(4, (d.count / max) * 100)}%`,
+                              background: 'var(--primary)'
+                            }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Most Solved & Most Difficult */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
+                  <div className="panel-card" style={{ padding: '18px' }}>
+                    <h3 style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '12px' }}>
+                      Highest Frequency Solves
+                    </h3>
+                    {analytics.mostSolved?.length ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {analytics.mostSolved.map(p => (
+                          <div key={p._id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                            <span style={{ fontWeight: 600 }}>{p.title}</span>
+                            <span style={{ color: 'var(--easy)', fontWeight: 600 }}>{p.accepted} solved</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No solves logged yet</p>}
+                  </div>
+
+                  <div className="panel-card" style={{ padding: '18px' }}>
+                    <h3 style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '12px' }}>
+                      Highest Failure Rates
+                    </h3>
+                    {analytics.mostDifficult?.length ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {analytics.mostDifficult.map(p => (
+                          <div key={p._id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                            <span style={{ fontWeight: 600 }}>{p.title}</span>
+                            <span>
+                              <span style={{ color: 'var(--hard)', fontWeight: 700 }}>{Math.round(p.acceptRate)}% pass</span>
+                              <span style={{ color: 'var(--text-muted)' }}> ({p.accepted}/{p.attempts})</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Insufficient data</p>}
+                  </div>
+                </div>
+
+                {/* Ledger Audit Table */}
+                <div className="panel-card" style={{ padding: '18px' }}>
+                  <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '14px' }}>
+                    Immutable Transaction Ledger Audit
+                  </h3>
+                  <LedgerTable />
+                </div>
+              </div>
+            ) : (
+              <div className="panel-card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                Analytics service currently unavailable.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 4: Anti-Fraud Engine */}
+        {tab === 'fraud' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.5px' }}>
+                  Anti-Cheating Diagnostics
+                </span>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                  Suspicious Account Detections ({fraudCases.length})
+                </h3>
+              </div>
+              <button className="btn-secondary" onClick={handleFraudScan} style={{ padding: '6px 14px', fontSize: '0.78rem' }}>
+                Trigger Full Platform Audit Scan
+              </button>
+            </div>
+
+            {fraudCases.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {fraudCases.map(c => (
+                  <div key={c._id} className="panel-card" style={{ padding: '16px 18px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ flex: 1, minWidth: '220px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{c.user?.name || 'Student User'}</span>
+                          <span className="badge" style={{
+                            background: c.level === 'clean' ? 'var(--success-subtle)' : c.level === 'attention' ? 'var(--warning-subtle)' : 'var(--danger-subtle)',
+                            color: c.level === 'clean' ? 'var(--easy)' : c.level === 'attention' ? 'var(--warning)' : 'var(--hard)',
+                            border: `1px solid ${c.level === 'clean' ? 'var(--success-border)' : c.level === 'attention' ? 'var(--warning-border)' : 'var(--danger-border)'}`,
+                            textTransform: 'capitalize'
+                          }}>
+                            {c.level}
+                          </span>
+                          <span className="badge" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', textTransform: 'capitalize' }}>
+                            Status: {c.status}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          {c.user?.email} • {c.user?.problemsSolved} solves • {c.user?.totalPointsEarned} credits
+                        </div>
+
+                        {c.reasons?.length > 0 && (
+                          <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {c.reasons.filter(r => r.points > 0).map((r, i) => (
+                              <div key={i} style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '4px', padding: '4px 8px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                <span>{r.detail}</span>
+                                <span style={{ fontWeight: 700, color: 'var(--hard)' }}>+{r.points}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {c.adminNotes && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                            Audit Record: {c.adminNotes}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Score Dial */}
+                      <div style={{
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '50%',
+                        border: `3px solid ${c.score >= 50 ? 'var(--hard)' : c.score >= 25 ? 'var(--warning)' : 'var(--easy)'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 800,
+                        fontSize: '1rem',
+                        color: 'var(--text-primary)'
+                      }}>
+                        {c.score}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '12px', flexWrap: 'wrap' }}>
+                      <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: '0.75rem' }} onClick={() => handleFraudReview(c._id, 'cleared', 'Cleared by administrator')}>
+                        ✓ Clear Record
+                      </button>
+                      <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: '0.75rem' }} onClick={() => handleFraudReview(c._id, 'reviewed', 'Reviewed by admin')}>
+                        Mark Reviewed
+                      </button>
+                      <button className="btn-danger" style={{ padding: '4px 10px', fontSize: '0.75rem' }} onClick={() => handleFraudReview(c._id, 'flagged', 'Flagged by admin')}>
+                        Flag Confirmed Abuse
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="panel-card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No fraudulent anomalies flagged across student accounts.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 5: Sponsored Notices */}
+        {tab === 'ads' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                Goal-targeted academic & industry notices ({ads.length})
               </span>
+              <button className="btn-primary" onClick={() => setShowAddAd(true)} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
+                + Add Sponsored Notice
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {ads.length > 0 ? ads.map(ad => (
+                <div key={ad._id} className="panel-card" style={{ padding: '16px 18px', opacity: ad.isActive ? 1 : 0.6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>{ad.title}</span>
+                        <span className="badge" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', textTransform: 'capitalize' }}>
+                          {ad.category}
+                        </span>
+                        {ad.rewardPoints > 0 && (
+                          <span className="badge" style={{ background: 'var(--success-subtle)', color: 'var(--easy)' }}>
+                            +{ad.rewardPoints} bonus pts
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Partner: {ad.sponsor} • Destination: {ad.url}
+                      </div>
+
+                      {ad.description && (
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                          {ad.description}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: '14px', marginTop: '8px', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        <span>Impressions: {ad.impressions}</span>
+                        <span>Clicks: {ad.clicks}</span>
+                        <span>CTR: {ad.ctr}%</span>
+                        <span>Rewarded Views: {ad.rewardClaims}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: '0.75rem' }}
+                        onClick={() => handleToggleAd(ad)}
+                      >
+                        {ad.isActive ? 'Active' : 'Disabled'}
+                      </button>
+                      <button
+                        className="btn-danger"
+                        style={{ padding: '5px 12px', fontSize: '0.75rem' }}
+                        onClick={() => handleDeleteAd(ad._id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )) : (
+                <div className="panel-card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  No sponsored notices configured.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 6: Proctoring Violators */}
+        {tab === 'violators' && (
+          <div>
+            <div style={{ marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>
+                Flagged Proctoring Incidents ({violators.length})
+              </h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                Authoritative server-side violation telemetry recorded during problem assessment sessions.
+              </p>
             </div>
 
             {violators.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {violators.map(v => (
-                  <div key={v.userId} className="glass-card" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-                      <div style={{ flex: 1, minWidth: '220px' }}>
-                        <div style={{ fontWeight: 700, fontSize: '1rem' }}>{v.name}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>{v.email}</div>
-                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '10px' }}>
-                          <span className="badge" style={{
-                            background: 'rgba(239, 68, 68, 0.15)',
-                            color: 'var(--hard)',
-                            fontWeight: 700
-                          }}>
-                            ⚠️ {v.flaggedCount} flagged submission{v.flaggedCount !== 1 ? 's' : ''}
+                  <div key={v.userId} className="panel-card" style={{ padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>{v.name}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{v.email}</div>
+
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+                          <span className="badge badge-hard">
+                            {v.flaggedCount} flagged submission{v.flaggedCount !== 1 ? 's' : ''}
                           </span>
-                          <span className="badge" style={{ background: 'var(--bg-secondary)', color: 'var(--medium)' }}>
-                            🚫 {v.totalViolations} violation{v.totalViolations !== 1 ? 's' : ''}
+                          <span className="badge badge-medium">
+                            {v.totalViolations} recorded violation{v.totalViolations !== 1 ? 's' : ''}
                           </span>
-                          <span className="badge" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                            📅 {new Date(v.lastFlaggedAt).toLocaleDateString()}
+                          <span className="badge" style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}>
+                            Last: {new Date(v.lastFlaggedAt).toLocaleDateString()}
                           </span>
                         </div>
+
                         {v.problems && v.problems.length > 0 && (
-                          <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                             {v.problems.map((p, i) => (
-                              <span key={i} style={{
-                                fontSize: '0.72rem',
-                                padding: '3px 8px',
-                                borderRadius: '6px',
-                                background: 'var(--bg-secondary)',
-                                color: 'var(--text-secondary)',
-                                border: '1px solid var(--border-subtle)'
-                              }}>
-                                {p.title} <span className={`badge-lang badge-${p.language}`}>{p.language}</span>
+                              <span key={i} style={{ fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                                {p.title} ({p.language})
                               </span>
                             ))}
                           </div>
@@ -449,304 +741,28 @@ export default function AdminPage() {
                 ))}
               </div>
             ) : (
-              <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <span style={{ fontSize: '2.5rem' }}>🛡️</span>
-                <p style={{ marginTop: '10px' }}>No proctoring violations recorded yet.</p>
+              <div className="panel-card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No proctoring violations recorded in active sessions.
               </div>
             )}
           </div>
         )}
 
-        {/* Analytics Tab */}
-        {tab === 'analytics' && (
-          <div className="animate-fade-in">
-            {analytics ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {/* Summary stat cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-                  <div className="stat-card">
-                    <span className="stat-label">👥 Users</span>
-                    <span className="stat-value">{analytics.users?.total}</span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{analytics.users?.newToday} today</span>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-label">📝 Submissions</span>
-                    <span className="stat-value">{analytics.submissions?.total}</span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{analytics.submissions?.today} today</span>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-label">✅ Acceptance Rate</span>
-                    <span className="stat-value" style={{ color: 'var(--easy)' }}>{analytics.submissions?.acceptanceRate}%</span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{analytics.submissions?.accepted} accepted</span>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-label">💎 Points Distributed</span>
-                    <span className="stat-value gradient-text">{analytics.points?.distributed?.toLocaleString()}</span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{analytics.points?.last7dEarned?.toLocaleString()} last 7d</span>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-label">💸 Withdrawn</span>
-                    <span className="stat-value" style={{ color: 'var(--medium)' }}>{analytics.points?.withdrawn?.toLocaleString()}</span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{analytics.withdrawals?.pending} pending, {analytics.withdrawals?.verified} verified</span>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-label">🤖 AI Failures</span>
-                    <span className="stat-value" style={{ color: analytics.submissions?.aiFailures > 0 ? 'var(--hard)' : 'var(--easy)' }}>{analytics.submissions?.aiFailures}</span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>tests passed but no AI score</span>
-                  </div>
-                </div>
-
-                {/* 14-day series */}
-                {analytics.series?.submissions?.length > 0 && (
-                  <div className="glass-card" style={{ padding: '20px' }}>
-                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>📈 Activity (last 14 days)</h3>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '120px', padding: '8px', background: 'var(--bg-secondary)', borderRadius: '10px', overflowX: 'auto' }}>
-                      {analytics.series.submissions.map((d, i) => {
-                        const max = Math.max(1, ...analytics.series.submissions.map(x => x.count));
-                        const pts = analytics.series.points[i]?.pts || 0;
-                        return (
-                          <div key={d.date} title={`${d.date}: ${d.count} submissions, ${pts} pts`} style={{ flex: '1 0 auto', minWidth: '18px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', alignItems: 'center', gap: '2px' }}>
-                            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{d.count}</div>
-                            <div style={{
-                              width: '100%', borderRadius: '4px 4px 0 0',
-                              height: `${Math.max(4, (d.count / max) * 100)}%`,
-                              background: 'var(--accent-primary)'
-                            }} />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Most solved + most difficult */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-                  <div className="glass-card" style={{ padding: '20px' }}>
-                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>🏆 Most Solved</h3>
-                    {analytics.mostSolved?.length ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {analytics.mostSolved.map(p => {
-                          const max = Math.max(1, ...analytics.mostSolved.map(x => x.accepted));
-                          return (
-                            <div key={p._id}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '4px' }}>
-                                <span style={{ fontWeight: 600 }}>{p.title}</span>
-                                <span style={{ color: 'var(--text-muted)' }}>{p.accepted} solves</span>
-                              </div>
-                              <div className="progress-bar-bg">
-                                <div className="progress-bar-fill" style={{ width: `${(p.accepted / max) * 100}%`, background: 'var(--easy)' }} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No solves yet</p>}
-                  </div>
-
-                  <div className="glass-card" style={{ padding: '20px' }}>
-                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>🥵 Most Difficult</h3>
-                    {analytics.mostDifficult?.length ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {analytics.mostDifficult.map(p => (
-                          <div key={p._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-                            <span style={{ fontWeight: 600 }}>{p.title}</span>
-                            <span>
-                              <span style={{ color: 'var(--hard)', fontWeight: 700 }}>{Math.round(p.acceptRate)}%</span>
-                              <span style={{ color: 'var(--text-muted)' }}> ({p.accepted}/{p.attempts})</span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Not enough data</p>}
-                  </div>
-                </div>
-
-                {/* Ledger audit */}
-                <div className="glass-card" style={{ padding: '20px' }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '14px' }}>🧾 Reward Ledger (latest entries)</h3>
-                  <LedgerTable />
-                </div>
-              </div>
-            ) : (
-              <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <span style={{ fontSize: '2.5rem' }}>📊</span>
-                <p style={{ marginTop: '10px' }}>Analytics unavailable.</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Fraud Tab */}
-        {tab === 'fraud' && (
-          <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-              <h3 style={{ fontWeight: 700 }}>🔍 Fraud Cases</h3>
-              <button className="btn-secondary" onClick={handleFraudScan} style={{ padding: '8px 20px', fontSize: '0.85rem' }}>
-                🔄 Rescan All Users
-              </button>
-            </div>
-
-            {fraudCases.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {fraudCases.map(c => (
-                  <div key={c._id} className="glass-card" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-                      <div style={{ flex: 1, minWidth: '220px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 700, fontSize: '1rem' }}>{c.user?.name || 'User'}</span>
-                          <span className={`badge ${c.level === 'clean' ? 'badge-easy' : c.level === 'attention' ? 'badge-medium' : 'badge-hard'}`} style={{ textTransform: 'capitalize' }}>
-                            {c.level}
-                          </span>
-                          <span className="badge" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
-                            {c.status}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          {c.user?.email} • {c.user?.problemsSolved} solved • {c.user?.totalPointsEarned} pts
-                        </div>
-                        {c.reasons?.length > 0 && (
-                          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            {c.reasons.filter(r => r.points > 0).map((r, i) => (
-                              <div key={i} style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                                <span>{r.detail}</span>
-                                <span style={{ fontWeight: 800, color: 'var(--hard)', whiteSpace: 'nowrap' }}>+{r.points}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {c.adminNotes && (
-                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>📝 {c.adminNotes}</div>
-                        )}
-                      </div>
-
-                      {/* Fraud score dial */}
-                      <div style={{ position: 'relative', width: '72px', height: '72px', flexShrink: 0 }}>
-                        <svg viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)', width: '72px', height: '72px' }}>
-                          <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--bg-secondary)" strokeWidth="3.6" />
-                          <circle
-                            cx="18" cy="18" r="15.9" fill="none"
-                            stroke={c.score >= 50 ? 'var(--hard)' : c.score >= 25 ? '#f59e0b' : 'var(--easy)'}
-                            strokeWidth="3.6" strokeDasharray={`${c.score} 100`} strokeLinecap="round"
-                          />
-                        </svg>
-                        <div style={{ position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.1rem' }}>
-                          {c.score}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Review actions */}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
-                      <button className="btn-primary" style={{ padding: '6px 14px', fontSize: '0.78rem' }} onClick={() => handleFraudReview(c._id, 'cleared', 'Reviewed — cleared by admin')}>
-                        ✅ Clear
-                      </button>
-                      <button className="btn-secondary" style={{ padding: '6px 14px', fontSize: '0.78rem' }} onClick={() => handleFraudReview(c._id, 'reviewed', 'Reviewed — keeping an eye on account')}>
-                        👁️ Mark Reviewed
-                      </button>
-                      <button style={{
-                        padding: '6px 14px', fontSize: '0.78rem', borderRadius: '8px', border: 'none',
-                        background: 'rgba(239, 68, 68, 0.15)', color: 'var(--hard)', fontWeight: 600, cursor: 'pointer'
-                      }} onClick={() => handleFraudReview(c._id, 'flagged', 'Confirmed fraud — flagged for penalty')}>
-                        🚩 Flag as Fraud
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <span style={{ fontSize: '2.5rem' }}>🔍</span>
-                <p style={{ marginTop: '10px' }}>No fraud cases yet. Run a scan to evaluate all users.</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Ads Tab */}
-        {tab === 'ads' && (
-          <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-              <h3 style={{ fontWeight: 700 }}>📣 Manage Ads</h3>
-              <button className="btn-primary" onClick={() => setShowAddAd(true)} style={{ padding: '8px 20px', fontSize: '0.85rem' }}>
-                + Add Ad
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {ads.length > 0 ? ads.map(ad => (
-                <div key={ad._id} className="glass-card" style={{ padding: '18px 20px', opacity: ad.isActive ? 1 : 0.55 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-                    <div style={{ flex: 1, minWidth: '220px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{ad.title}</span>
-                        <span className={`badge badge-${ad.category}`}>{ad.category}</span>
-                        {ad.rewardPoints > 0 && (
-                          <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--easy)' }}>
-                            🎁 +{ad.rewardPoints} pts
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                        by {ad.sponsor} • {ad.url}
-                      </div>
-                      {ad.description && (
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '6px' }}>{ad.description}</div>
-                      )}
-                      <div style={{ display: 'flex', gap: '16px', marginTop: '10px', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        <span>👁 {ad.impressions} impressions</span>
-                        <span>🖱 {ad.clicks} clicks</span>
-                        <span>📈 CTR {ad.ctr}%</span>
-                        <span>🎁 {ad.rewardClaims} rewarded</span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: '6px 14px', fontSize: '0.78rem' }}
-                        onClick={() => handleToggleAd(ad)}
-                      >
-                        {ad.isActive ? '🟢 Active' : '⚪ Disabled'}
-                      </button>
-                      <button
-                        style={{
-                          padding: '6px 14px', fontSize: '0.78rem', borderRadius: '8px', border: 'none',
-                          background: 'rgba(239, 68, 68, 0.12)', color: 'var(--hard)', fontWeight: 600, cursor: 'pointer'
-                        }}
-                        onClick={() => handleDeleteAd(ad._id)}
-                      >
-                        🗑 Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )) : (
-                <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <span style={{ fontSize: '2.5rem' }}>📣</span>
-                  <p style={{ marginTop: '10px' }}>No ads yet. Create your first sponsored ad.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Settings Tab */}
+        {/* Tab 7: Platform Settings */}
         {tab === 'settings' && (
-          <div className="animate-fade-in">
-            <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Platform Settings</h3>
-
-            <div className="glass-card" style={{ padding: '24px', maxWidth: '680px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '260px' }}>
-                  <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>🛡️ Proctoring Mode</div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.6 }}>
-                    When enabled, students must start a proctored session before solving problems. It monitors
-                    tab-switching, window blur, copy/paste, right-click, and keyboard shortcuts, and flags submissions
-                    that accumulate violations.
+          <div>
+            <div className="panel-card" style={{ padding: '22px', maxWidth: '640px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '240px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                    Anti-Cheat Proctoring Engine
                   </div>
-                  <div style={{ fontSize: '0.8rem', marginTop: '10px', fontWeight: 600, color: proctoringEnabled ? 'var(--easy)' : 'var(--hard)' }}>
-                    {proctoringEnabled
-                      ? '● Proctoring is currently ENABLED for all problem-solving sessions'
-                      : '○ Proctoring is currently DISABLED — students can solve without monitoring'}
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: 1.55 }}>
+                    When enabled, problem submissions require an active proctoring session that monitors tab switches,
+                    window blur events, unauthorized clipboard pasting, and shortcuts. Violations are journaled server-side.
+                  </div>
+                  <div style={{ fontSize: '0.78rem', marginTop: '8px', fontWeight: 600, color: proctoringEnabled ? 'var(--easy)' : 'var(--hard)' }}>
+                    {proctoringEnabled ? '● Proctoring enforcement is currently ACTIVE' : '○ Proctoring enforcement is DISABLED'}
                   </div>
                 </div>
 
@@ -757,28 +773,27 @@ export default function AdminPage() {
                   aria-label="Toggle proctoring mode"
                   onClick={handleToggleProctoring}
                   style={{
-                    width: '58px',
-                    height: '32px',
+                    width: '52px',
+                    height: '28px',
                     flexShrink: 0,
-                    borderRadius: '20px',
+                    borderRadius: '14px',
                     border: 'none',
                     cursor: 'pointer',
-                    background: proctoringEnabled ? 'var(--gradient-success)' : 'var(--bg-elevated)',
+                    background: proctoringEnabled ? 'var(--easy)' : 'var(--bg-secondary)',
+                    border: '1px solid var(--border-medium)',
                     position: 'relative',
-                    transition: 'background 0.3s ease',
-                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)'
+                    transition: 'background 0.2s ease'
                   }}
                 >
                   <span style={{
                     position: 'absolute',
-                    top: '3px',
-                    left: proctoringEnabled ? '29px' : '3px',
-                    width: '26px',
-                    height: '26px',
+                    top: '2px',
+                    left: proctoringEnabled ? '26px' : '2px',
+                    width: '22px',
+                    height: '22px',
                     borderRadius: '50%',
                     background: '#ffffff',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                    transition: 'left 0.3s ease'
+                    transition: 'left 0.2s ease'
                   }} />
                 </button>
               </div>
@@ -787,95 +802,108 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* Add Problem Modal */}
+      {/* Deploy Challenge Modal */}
       {showAddProblem && (
         <div className="modal-overlay" onClick={() => setShowAddProblem(false)}>
-          <div className="modal-content" style={{ maxWidth: '600px', maxHeight: '85vh' }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '20px' }}>➕ Add New Problem</h2>
+          <div className="modal-content" style={{ maxWidth: '580px', maxHeight: '85vh' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.5px' }}>
+                Curriculum Authoring
+              </div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                Deploy New Problem Challenge
+              </h2>
+            </div>
 
             {formError && (
-              <div style={{ padding: '10px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', fontSize: '0.85rem', marginBottom: '16px' }}>
+              <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'var(--danger-subtle)', border: '1px solid var(--danger-border)', color: 'var(--danger)', fontSize: '0.8rem', marginBottom: '12px' }}>
                 {formError}
               </div>
             )}
 
-            <form onSubmit={handleAddProblem} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <input type="text" className="input-field" placeholder="Problem Title" value={problemForm.title} onChange={(e) => setProblemForm({...problemForm, title: e.target.value})} required />
+            <form onSubmit={handleAddProblem} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <input type="text" className="input-field" placeholder="Challenge Title" value={problemForm.title} onChange={(e) => setProblemForm({ ...problemForm, title: e.target.value })} required />
 
-              <textarea className="input-field" placeholder="Problem Description" rows={4} style={{ resize: 'vertical' }} value={problemForm.description} onChange={(e) => setProblemForm({...problemForm, description: e.target.value})} required />
+              <textarea className="input-field" placeholder="Problem Description and Requirements" rows={3} style={{ resize: 'vertical' }} value={problemForm.description} onChange={(e) => setProblemForm({ ...problemForm, description: e.target.value })} required />
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                <select className="input-field" value={problemForm.language} onChange={(e) => setProblemForm({...problemForm, language: e.target.value})}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                <select className="input-field" value={problemForm.language} onChange={(e) => setProblemForm({ ...problemForm, language: e.target.value })}>
                   <option value="c">C</option>
                   <option value="python">Python</option>
                   <option value="java">Java</option>
                 </select>
-                <select className="input-field" value={problemForm.difficulty} onChange={(e) => setProblemForm({...problemForm, difficulty: e.target.value})}>
+                <select className="input-field" value={problemForm.difficulty} onChange={(e) => setProblemForm({ ...problemForm, difficulty: e.target.value })}>
                   <option value="easy">Easy</option>
                   <option value="medium">Medium</option>
                   <option value="hard">Hard</option>
                 </select>
-                <input type="number" className="input-field" placeholder="Base Points" min={50} value={problemForm.basePoints} onChange={(e) => setProblemForm({...problemForm, basePoints: parseInt(e.target.value)})} />
+                <input type="number" className="input-field" placeholder="Base Points" min={50} value={problemForm.basePoints} onChange={(e) => setProblemForm({ ...problemForm, basePoints: parseInt(e.target.value) || 0 })} />
               </div>
 
-              <textarea className="input-field font-mono" placeholder="Starter Code" rows={3} style={{ resize: 'vertical', fontSize: '0.85rem' }} value={problemForm.starterCode} onChange={(e) => setProblemForm({...problemForm, starterCode: e.target.value})} />
+              <textarea className="input-field font-mono" placeholder="Starter Code Template" rows={3} style={{ resize: 'vertical', fontSize: '0.8rem' }} value={problemForm.starterCode} onChange={(e) => setProblemForm({ ...problemForm, starterCode: e.target.value })} />
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <input type="text" className="input-field" placeholder="Sample Input" value={problemForm.sampleInput} onChange={(e) => setProblemForm({...problemForm, sampleInput: e.target.value})} />
-                <input type="text" className="input-field" placeholder="Sample Output" value={problemForm.sampleOutput} onChange={(e) => setProblemForm({...problemForm, sampleOutput: e.target.value})} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <input type="text" className="input-field" placeholder="Sample Input" value={problemForm.sampleInput} onChange={(e) => setProblemForm({ ...problemForm, sampleInput: e.target.value })} />
+                <input type="text" className="input-field" placeholder="Sample Output" value={problemForm.sampleOutput} onChange={(e) => setProblemForm({ ...problemForm, sampleOutput: e.target.value })} />
               </div>
 
               {/* Test Cases */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Test Cases</label>
-                  <button type="button" onClick={addTestCase} style={{
-                    padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--accent-primary)',
-                    background: 'transparent', color: 'var(--accent-primary)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600
-                  }}>
-                    + Add
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Evaluation Test Cases ({problemForm.testCases.length})
+                  </label>
+                  <button type="button" onClick={addTestCase} className="btn-secondary" style={{ padding: '2px 8px', fontSize: '0.72rem' }}>
+                    + Add Vector
                   </button>
                 </div>
                 {problemForm.testCases.map((tc, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-                    <input className="input-field" style={{ flex: 1, fontSize: '0.85rem' }} placeholder="Input" value={tc.input} onChange={(e) => updateTestCase(i, 'input', e.target.value)} />
-                    <input className="input-field" style={{ flex: 1, fontSize: '0.85rem' }} placeholder="Expected Output" value={tc.expectedOutput} onChange={(e) => updateTestCase(i, 'expectedOutput', e.target.value)} />
+                  <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                    <input className="input-field" style={{ flex: 1, fontSize: '0.8rem' }} placeholder="Standard Input" value={tc.input} onChange={(e) => updateTestCase(i, 'input', e.target.value)} />
+                    <input className="input-field" style={{ flex: 1, fontSize: '0.8rem' }} placeholder="Expected Output" value={tc.expectedOutput} onChange={(e) => updateTestCase(i, 'expectedOutput', e.target.value)} />
                     {problemForm.testCases.length > 1 && (
                       <button type="button" onClick={() => removeTestCase(i)} style={{
-                        padding: '8px', border: 'none', background: 'rgba(239, 68, 68, 0.1)',
-                        color: 'var(--hard)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.9rem'
+                        padding: '6px 10px', border: '1px solid var(--danger-border)', background: 'var(--danger-subtle)',
+                        color: 'var(--danger)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem'
                       }}>✕</button>
                     )}
                   </div>
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
                 <button type="button" className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowAddProblem(false)}>Cancel</button>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Problem</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Deploy Problem</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Add Ad Modal */}
+      {/* Add Sponsored Notice Modal */}
       {showAddAd && (
         <div className="modal-overlay" onClick={() => setShowAddAd(false)}>
-          <div className="modal-content" style={{ maxWidth: '520px', maxHeight: '85vh' }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '20px' }}>📣 Add New Ad</h2>
-
-            <form onSubmit={handleCreateAd} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <input type="text" className="input-field" placeholder="Sponsor (e.g. Dell)" value={adForm.sponsor} onChange={(e) => setAdForm({...adForm, sponsor: e.target.value})} required />
-                <input type="text" className="input-field" placeholder="Ad Title" value={adForm.title} onChange={(e) => setAdForm({...adForm, title: e.target.value})} required />
+          <div className="modal-content" style={{ maxWidth: '500px', maxHeight: '85vh' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.5px' }}>
+                Notice Management
               </div>
-              <textarea className="input-field" placeholder="Description" rows={2} style={{ resize: 'vertical' }} value={adForm.description} onChange={(e) => setAdForm({...adForm, description: e.target.value})} />
-              <input type="url" className="input-field" placeholder="Destination URL (https://…)" value={adForm.url} onChange={(e) => setAdForm({...adForm, url: e.target.value})} required />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                <input type="text" className="input-field" placeholder="CTA (e.g. Shop Now)" value={adForm.cta} onChange={(e) => setAdForm({...adForm, cta: e.target.value})} />
-                <input type="text" className="input-field" placeholder="Badge (e.g. ⭐ Hot)" value={adForm.badge} onChange={(e) => setAdForm({...adForm, badge: e.target.value})} />
-                <select className="input-field" value={adForm.category} onChange={(e) => setAdForm({...adForm, category: e.target.value})}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                Create Sponsored Academic Notice
+              </h2>
+            </div>
+
+            <form onSubmit={handleCreateAd} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <input type="text" className="input-field" placeholder="Sponsor Entity (e.g. Dell)" value={adForm.sponsor} onChange={(e) => setAdForm({ ...adForm, sponsor: e.target.value })} required />
+                <input type="text" className="input-field" placeholder="Notice Title" value={adForm.title} onChange={(e) => setAdForm({ ...adForm, title: e.target.value })} required />
+              </div>
+              <textarea className="input-field" placeholder="Notice Description" rows={2} style={{ resize: 'vertical' }} value={adForm.description} onChange={(e) => setAdForm({ ...adForm, description: e.target.value })} />
+              <input type="url" className="input-field" placeholder="Destination URL (https://…)" value={adForm.url} onChange={(e) => setAdForm({ ...adForm, url: e.target.value })} required />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                <input type="text" className="input-field" placeholder="Action Label (e.g. Apply)" value={adForm.cta} onChange={(e) => setAdForm({ ...adForm, cta: e.target.value })} />
+                <input type="text" className="input-field" placeholder="Tag (e.g. Student)" value={adForm.badge} onChange={(e) => setAdForm({ ...adForm, badge: e.target.value })} />
+                <select className="input-field" value={adForm.category} onChange={(e) => setAdForm({ ...adForm, category: e.target.value })}>
                   <option value="laptop">Laptop</option>
                   <option value="course">Course</option>
                   <option value="travel">Travel</option>
@@ -884,20 +912,20 @@ export default function AdminPage() {
                   <option value="custom">Custom</option>
                 </select>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
-                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Reward Points (0 = no reward)</label>
-                  <input type="number" className="input-field" min="0" max="500" value={adForm.rewardPoints} onChange={(e) => setAdForm({...adForm, rewardPoints: parseInt(e.target.value) || 0})} />
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Bonus Points (0-500)</label>
+                  <input type="number" className="input-field" min="0" max="500" value={adForm.rewardPoints} onChange={(e) => setAdForm({ ...adForm, rewardPoints: parseInt(e.target.value) || 0 })} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Reward Cooldown (hours)</label>
-                  <input type="number" className="input-field" min="0" max="168" value={adForm.rewardCooldownHours} onChange={(e) => setAdForm({...adForm, rewardCooldownHours: parseInt(e.target.value) || 24})} />
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Cooldown Period (hours)</label>
+                  <input type="number" className="input-field" min="0" max="168" value={adForm.rewardCooldownHours} onChange={(e) => setAdForm({ ...adForm, rewardCooldownHours: parseInt(e.target.value) || 24 })} />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
                 <button type="button" className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowAddAd(false)}>Cancel</button>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Ad</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Save Notice</button>
               </div>
             </form>
           </div>

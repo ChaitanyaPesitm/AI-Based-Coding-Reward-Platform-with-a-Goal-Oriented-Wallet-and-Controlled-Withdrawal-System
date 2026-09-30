@@ -1,15 +1,22 @@
 'use client';
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 
 const ThemeContext = createContext({ theme: 'dark', toggleTheme: () => {} });
 
-const getInitialTheme = () => {
-  if (typeof window === 'undefined') return 'dark';
-  return document.documentElement.dataset.theme || 'dark';
-};
-
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(getInitialTheme);
+  const [theme, setTheme] = useState('dark');
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('theme') || document.documentElement.dataset.theme;
+      if (stored && (stored === 'light' || stored === 'dark')) {
+        setTheme(stored);
+        document.documentElement.dataset.theme = stored;
+      }
+    } catch (e) {
+      // localStorage access restricted
+    }
+  }, []);
 
   const toggleTheme = () => {
     setTheme((prev) => {

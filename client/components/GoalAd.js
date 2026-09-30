@@ -4,9 +4,8 @@ import { adsAPI } from '@/lib/api';
 
 /**
  * Goal-Based Advertisement component.
- * Fetches DB-backed ads matching the user's active goal category, rotates them
- * every 8s, tracks impressions/clicks, and supports the rewarded-watch flow
- * (watch a short countdown to earn bonus points).
+ * Displays relevant partner notices matching the user's active goal category,
+ * supports impressions/clicks, and rewarded verification for extra credits.
  */
 export default function GoalAd({ category = 'custom', compact = false }) {
   const [ads, setAds] = useState([]);
@@ -28,7 +27,7 @@ export default function GoalAd({ category = 'custom', compact = false }) {
       .finally(() => setLoading(false));
   }, [category]);
 
-  // Track an impression whenever the displayed ad changes
+  // Track impression on change
   useEffect(() => {
     const ad = ads[current];
     if (!ad || !ad.id) return;
@@ -36,7 +35,7 @@ export default function GoalAd({ category = 'custom', compact = false }) {
     adsAPI.impression(ad.id).catch(() => {});
   }, [current, ads]);
 
-  // Rotate ads every 8 seconds (paused while a rewarded watch is running)
+  // Rotate every 8 seconds
   useEffect(() => {
     if (ads.length <= 1 || watching) return;
     const timer = setInterval(() => {
@@ -66,11 +65,10 @@ export default function GoalAd({ category = 'custom', compact = false }) {
       setWatching(true);
       setCountdown(requiredSeconds);
     } catch (err) {
-      setRewardMsg(err.response?.data?.message || 'Reward unavailable right now.');
+      setRewardMsg(err.response?.data?.message || 'Verification unavailable right now.');
     }
   }, []);
 
-  // Countdown → claim reward when the minimum watch time elapses
   useEffect(() => {
     if (!watching) return;
     if (countdown > 0) {
@@ -87,11 +85,11 @@ export default function GoalAd({ category = 'custom', compact = false }) {
     }
     adsAPI.reward(ad.id, viewId)
       .then(res => {
-        setRewardMsg(res.data.message || `+${res.data.data?.points} points earned!`);
+        setRewardMsg(res.data.message || `+${res.data.data?.points} points credited to wallet!`);
         setWatching(false);
       })
       .catch(err => {
-        setRewardMsg(err.response?.data?.message || 'Reward claim failed.');
+        setRewardMsg(err.response?.data?.message || 'Credit verification failed.');
         setWatching(false);
       });
   }, [watching, countdown, ads, current]);
@@ -104,21 +102,21 @@ export default function GoalAd({ category = 'custom', compact = false }) {
   if (compact) {
     return (
       <div style={{
-        padding: '12px 16px',
-        borderRadius: '10px',
-        background: 'rgba(108, 99, 255, 0.05)',
-        border: '1px dashed rgba(108, 99, 255, 0.25)',
+        padding: '10px 14px',
+        borderRadius: '6px',
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: '12px',
-        fontSize: '0.82rem'
+        fontSize: '0.8rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Sponsored
           </span>
-          <span style={{ color: 'var(--text-secondary)' }}>·</span>
+          <span style={{ color: 'var(--border-strong)' }}>|</span>
           <strong style={{ color: 'var(--text-primary)' }}>{ad.title}</strong>
         </div>
         <a
@@ -126,46 +124,38 @@ export default function GoalAd({ category = 'custom', compact = false }) {
           onClick={(e) => handleClick(e, ad)}
           target="_blank"
           rel="noopener noreferrer"
-          style={{
-            padding: '5px 12px',
-            borderRadius: '6px',
-            background: 'var(--gradient-primary)',
-            color: 'white',
-            fontWeight: 600,
-            fontSize: '0.78rem',
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-            flexShrink: 0
-          }}
+          style={{ textDecoration: 'none' }}
         >
-          {ad.cta}
+          <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
+            {ad.cta}
+          </button>
         </a>
       </div>
     );
   }
 
   return (
-    <div className="glass-card" style={{ padding: '20px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+    <div className="panel-card" style={{ padding: '16px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
         <span style={{
-          fontSize: '0.68rem',
+          fontSize: '0.65rem',
           fontWeight: 700,
           textTransform: 'uppercase',
-          letterSpacing: '0.8px',
+          letterSpacing: '0.6px',
           color: 'var(--text-muted)',
           background: 'var(--bg-secondary)',
-          padding: '3px 8px',
+          padding: '2px 6px',
           borderRadius: '4px'
         }}>
-          Sponsored
+          Sponsored Partner
         </span>
         {ad.badge && (
           <span style={{
-            fontSize: '0.72rem',
+            fontSize: '0.68rem',
             fontWeight: 600,
-            color: 'var(--accent-primary)',
-            background: 'rgba(108, 99, 255, 0.1)',
-            padding: '2px 8px',
+            color: 'var(--primary)',
+            background: 'var(--primary-subtle)',
+            padding: '2px 6px',
             borderRadius: '4px'
           }}>
             {ad.badge}
@@ -173,41 +163,49 @@ export default function GoalAd({ category = 'custom', compact = false }) {
         )}
         {ad.rewardPoints > 0 && (
           <span style={{
-            fontSize: '0.72rem',
+            fontSize: '0.68rem',
             fontWeight: 700,
             color: 'var(--easy)',
-            background: 'rgba(16, 185, 129, 0.12)',
-            padding: '2px 8px',
+            background: 'var(--success-subtle)',
+            padding: '2px 6px',
             borderRadius: '4px'
           }}>
-            🎁 +{ad.rewardPoints} pts
+            +{ad.rewardPoints} bonus credits
           </span>
         )}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          Related to your{' '}
-          <span style={{ color: 'var(--accent-primary)' }}>
-            {{
-              laptop: '💻 laptop', course: '📚 course', travel: '✈️ travel',
-              gadget: '📱 gadget', savings: '🏦 savings', custom: '🎯 goal'
-            }[category] || 'goal'}
-          </span>
+          Target Category: <strong style={{ textTransform: 'capitalize', color: 'var(--text-secondary)' }}>{category}</strong>
         </span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: '200px' }}>
-          <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
+        <div style={{ flex: 1, minWidth: '220px' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: '2px' }}>
             {ad.title}
           </div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
             {ad.description}
           </div>
-          <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            by {ad.sponsor}
+          <div style={{ marginTop: '4px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            Offered by {ad.sponsor}
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {ad.rewardPoints > 0 && (
+            <button
+              className="btn-secondary"
+              disabled={watching}
+              onClick={() => startReward(ad)}
+              style={{
+                padding: '6px 12px',
+                fontSize: '0.78rem',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {watching ? `Reviewing (${countdown}s)` : `Verify for +${ad.rewardPoints} pts`}
+            </button>
+          )}
           <a
             href={ad.url}
             onClick={(e) => handleClick(e, ad)}
@@ -215,48 +213,30 @@ export default function GoalAd({ category = 'custom', compact = false }) {
             rel="noopener noreferrer"
             style={{ textDecoration: 'none' }}
           >
-            <button className="btn-primary" style={{ padding: '10px 20px', fontSize: '0.88rem', whiteSpace: 'nowrap' }}>
+            <button className="btn-primary" style={{ padding: '6px 14px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
               {ad.cta} →
             </button>
           </a>
-          {ad.rewardPoints > 0 && (
-            <button
-              className="btn-secondary"
-              disabled={watching}
-              onClick={() => startReward(ad)}
-              style={{
-                padding: '8px 20px',
-                fontSize: '0.82rem',
-                whiteSpace: 'nowrap',
-                background: watching ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.08)',
-                border: '1px solid rgba(16, 185, 129, 0.3)',
-                color: 'var(--easy)',
-                cursor: watching ? 'default' : 'pointer'
-              }}
-            >
-              {watching ? `Watching… ${countdown}s` : `▶ Watch to earn +${ad.rewardPoints} pts`}
-            </button>
-          )}
         </div>
       </div>
 
       {rewardMsg && (
         <div style={{
-          marginTop: '14px',
-          padding: '10px 14px',
-          borderRadius: '10px',
-          fontSize: '0.85rem',
-          background: rewardMsg.includes('points earned') ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-          border: `1px solid ${rewardMsg.includes('points earned') ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
-          color: rewardMsg.includes('points earned') ? 'var(--easy)' : 'var(--medium)'
+          marginTop: '10px',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          fontSize: '0.8rem',
+          background: rewardMsg.includes('points') ? 'var(--success-subtle)' : 'var(--warning-subtle)',
+          border: `1px solid ${rewardMsg.includes('points') ? 'var(--success-border)' : 'var(--warning-border)'}`,
+          color: rewardMsg.includes('points') ? 'var(--easy)' : 'var(--warning)'
         }}>
           {rewardMsg}
         </div>
       )}
 
-      {/* Pagination dots */}
+      {/* Pagination indicators */}
       {ads.length > 1 && (
-        <div style={{ display: 'flex', gap: '6px', marginTop: '14px', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', gap: '4px', marginTop: '10px', justifyContent: 'center' }}>
           {ads.map((_, i) => (
             <button
               key={i}
@@ -267,10 +247,10 @@ export default function GoalAd({ category = 'custom', compact = false }) {
                 borderRadius: '50%',
                 border: 'none',
                 cursor: 'pointer',
-                background: i === current ? 'var(--accent-primary)' : 'var(--bg-elevated)',
-                transition: 'background 0.2s ease',
+                background: i === current ? 'var(--primary)' : 'var(--border-strong)',
                 padding: 0
               }}
+              aria-label={`Slide ${i + 1}`}
             />
           ))}
         </div>

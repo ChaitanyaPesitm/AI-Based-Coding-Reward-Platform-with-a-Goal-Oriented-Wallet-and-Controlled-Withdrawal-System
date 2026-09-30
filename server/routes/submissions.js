@@ -120,7 +120,7 @@ router.post('/', submissionLimiter, async (req, res) => {
     const submissionLanguage = language || problem.language;
 
     // Check if user already solved this problem (accepted at least once)
-    const alreadySolved = req.user.solvedProblems &&
+    let alreadySolved = req.user.solvedProblems &&
       req.user.solvedProblems.map(id => id.toString()).includes(problemId.toString());
 
     // Get user's active goal

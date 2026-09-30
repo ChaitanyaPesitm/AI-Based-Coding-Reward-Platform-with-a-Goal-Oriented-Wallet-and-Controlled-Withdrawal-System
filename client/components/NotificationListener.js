@@ -35,32 +35,61 @@ export default function NotificationListener() {
 
   if (!notification) return null;
 
+  const isSuccess = notification.type === 'success';
+
   return (
     <div
-      className={`toast toast-${notification.type}`}
       style={{
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        position: 'fixed',
+        bottom: '24px',
+        right: '24px',
+        zIndex: 10000,
+        padding: '12px 18px',
+        borderRadius: '8px',
+        background: 'var(--bg-card)',
+        border: `1px solid ${isSuccess ? 'var(--success-border)' : 'var(--danger-border)'}`,
+        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
-        border: '1px solid rgba(255,255,255,0.2)'
+        maxWidth: '380px'
       }}
     >
-      <span style={{ fontSize: '1.4rem' }}>{notification.type === 'success' ? '🎉' : '⚠️'}</span>
+      <div style={{
+        width: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        background: isSuccess ? 'var(--success-subtle)' : 'var(--danger-subtle)',
+        color: isSuccess ? 'var(--easy)' : 'var(--danger)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.8rem',
+        fontWeight: 700,
+        flexShrink: 0
+      }}>
+        {isSuccess ? '✓' : '!'}
+      </div>
       <div>
-        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Real-time Notification</div>
-        <div style={{ fontSize: '0.85rem', marginTop: '2px' }}>{notification.message}</div>
+        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+          System Notification
+        </div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+          {notification.message}
+        </div>
       </div>
       <button
         onClick={() => setNotification(null)}
         style={{
           background: 'none',
           border: 'none',
-          color: 'white',
-          fontSize: '1rem',
+          color: 'var(--text-muted)',
+          fontSize: '0.9rem',
           cursor: 'pointer',
-          marginLeft: 'auto'
+          marginLeft: 'auto',
+          padding: '2px 4px'
         }}
+        aria-label="Dismiss notification"
       >
         ✕
       </button>

@@ -133,7 +133,7 @@ Public/authenticated endpoints under `/api`:
 
 ```bash
 cd server
-npm test        # 35 tests (auth, submissions, reward engine)
+npm test        # 55 tests (auth, submissions, reward engine, ads, features)
 ```
 
 ## License

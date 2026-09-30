@@ -1,316 +1,315 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { proctorAPI } from '@/lib/api';
 
 /**
  * ProctoringOverlay - Monitors user activity during problem solving to prevent cheating
- * - Detects tab switches / window blur (copying from other sites)
- * - Detects copy/paste operations
- * - Detects right-click
+ * - Detects tab switches / window blur
+ * - Detects copy/paste operations & context menu
  * - Tracks time spent away
- * - Shows warnings and can flag submissions
- *
- * Every violation is reported to the server and stored on a ProctorSession, so the
- * submission route can read the authoritative count instead of trusting the client.
+ * - Authoritative server-side violation logging
  */
 export default function ProctoringOverlay({ problemId, onViolation, enabled = true }) {
-    const [violations, setViolations] = useState([]);
-    const [isProctored, setIsProctored] = useState(true);
-    const [warningVisible, setWarningVisible] = useState(false);
-    const [warningMessage, setWarningMessage] = useState('');
-    const [awayTime, setAwayTime] = useState(0);
-    const [isAway, setIsAway] = useState(false);
-    const [showConfirm, setShowConfirm] = useState(false);
-    const [proctorActive, setProctorActive] = useState(false);
+  const [violations, setViolations] = useState([]);
+  const [warningVisible, setWarningVisible] = useState(false);
+  const [warningMessage, setWarningMessage] = useState('');
+  const [awayTime, setAwayTime] = useState(0);
+  const [isAway, setIsAway] = useState(false);
+  const [proctorActive, setProctorActive] = useState(false);
 
-    const violationsRef = useRef([]);
-    const awayStartRef = useRef(null);
-    const awayTimerRef = useRef(null);
-    const lastActivityRef = useRef(null);
-    const proctorStartedRef = useRef(false);
-    const sessionIdRef = useRef(null);
+  const violationsRef = useRef([]);
+  const awayStartRef = useRef(null);
+  const awayTimerRef = useRef(null);
+  const lastActivityRef = useRef(null);
+  const sessionIdRef = useRef(null);
 
-    // End the server-side session if the user leaves the page without submitting
-    useEffect(() => {
-        return () => {
-            if (sessionIdRef.current) {
-                proctorAPI.end(sessionIdRef.current).catch(() => {});
-            }
-        };
-    }, []);
+  // End session on unmount
+  useEffect(() => {
+    return () => {
+      if (sessionIdRef.current) {
+        proctorAPI.end(sessionIdRef.current).catch(() => {});
+      }
+    };
+  }, []);
 
-    // Start proctoring session
-    const startProctoring = () => {
-        setProctorActive(true);
-        proctorStartedRef.current = true;
-        setShowConfirm(false);
-        setViolations([]);
-        violationsRef.current = [];
-        setAwayTime(0);
+  const startProctoring = () => {
+    setProctorActive(true);
+    setViolations([]);
+    violationsRef.current = [];
+    setAwayTime(0);
+    setIsAway(false);
+    awayStartRef.current = null;
+
+    proctorAPI.start(problemId)
+      .then(res => {
+        sessionIdRef.current = res.data?.data?.session?._id || null;
+      })
+      .catch(() => {
+        sessionIdRef.current = null;
+      });
+  };
+
+  const addViolation = useCallback((type, message) => {
+    const violation = {
+      type,
+      message,
+      timestamp: new Date().toISOString(),
+      time: new Date().toLocaleTimeString()
+    };
+    violationsRef.current = [...violationsRef.current, violation];
+    setViolations(violationsRef.current);
+
+    setWarningMessage(message);
+    setWarningVisible(true);
+    setTimeout(() => setWarningVisible(false), 4000);
+
+    if (onViolation) {
+      onViolation(violation, violationsRef.current.length);
+    }
+
+    if (sessionIdRef.current) {
+      proctorAPI.violation(sessionIdRef.current, type, message).catch(() => {});
+    }
+  }, [onViolation]);
+
+  // Tab switch detection
+  useEffect(() => {
+    if (!proctorActive) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setIsAway(true);
+        awayStartRef.current = Date.now();
+        addViolation('tab_switch', 'Focus Lost: Tab switch detected and recorded.');
+
+        awayTimerRef.current = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - awayStartRef.current) / 1000);
+          setAwayTime(elapsed);
+        }, 1000);
+      } else {
+        if (awayStartRef.current) {
+          const elapsed = Math.floor((Date.now() - awayStartRef.current) / 1000);
+          if (elapsed > 0) {
+            addViolation('returned', `Focus Restored: Returned after ${elapsed}s away.`);
+          }
+        }
         setIsAway(false);
         awayStartRef.current = null;
-
-        // Register a server-side session so violations are recorded server-side
-        proctorAPI.start(problemId)
-            .then(res => {
-                sessionIdRef.current = res.data?.data?.session?._id || null;
-            })
-            .catch(() => {
-                sessionIdRef.current = null;
-            });
+        if (awayTimerRef.current) {
+          clearInterval(awayTimerRef.current);
+          awayTimerRef.current = null;
+        }
+      }
     };
 
-    // Add a violation
-    const addViolation = (type, message) => {
-        const violation = {
-            type,
-            message,
-            timestamp: new Date().toISOString(),
-            time: new Date().toLocaleTimeString()
-        };
-        violationsRef.current = [...violationsRef.current, violation];
-        setViolations(violationsRef.current);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (awayTimerRef.current) clearInterval(awayTimerRef.current);
+    };
+  }, [proctorActive, addViolation]);
 
-        // Show warning
-        setWarningMessage(message);
-        setWarningVisible(true);
-        setTimeout(() => setWarningVisible(false), 4000);
+  // Window blur detection
+  useEffect(() => {
+    if (!proctorActive) return;
 
-        // Notify parent
-        if (onViolation) {
-            onViolation(violation, violationsRef.current.length);
-        }
-
-        // Record the violation server-side
-        if (sessionIdRef.current) {
-            proctorAPI.violation(sessionIdRef.current, type, message).catch(() => {});
-        }
+    const handleBlur = () => {
+      if (!document.hidden) {
+        addViolation('window_blur', 'Window Focus Lost: Pointer exited browser viewport.');
+      }
     };
 
-    // Handle tab visibility change
-    useEffect(() => {
-        if (!proctorActive) return;
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, [proctorActive, addViolation]);
 
-        const handleVisibilityChange = () => {
-            if (document.hidden) {
-                // User left the tab - potential cheating
-                setIsAway(true);
-                awayStartRef.current = Date.now();
-                addViolation('tab_switch', '⚠️ You switched tabs! This is recorded as a potential cheating attempt.');
+  // Clipboard & right-click guards
+  useEffect(() => {
+    if (!proctorActive) return;
 
-                // Start tracking away time
-                awayTimerRef.current = setInterval(() => {
-                    const elapsed = Math.floor((Date.now() - awayStartRef.current) / 1000);
-                    setAwayTime(elapsed);
-                }, 1000);
-            } else {
-                // User returned
-                if (awayStartRef.current) {
-                    const elapsed = Math.floor((Date.now() - awayStartRef.current) / 1000);
-                    if (elapsed > 0) {
-                        addViolation('returned', `You returned after ${elapsed}s away.`);
-                    }
-                }
-                setIsAway(false);
-                awayStartRef.current = null;
-                if (awayTimerRef.current) {
-                    clearInterval(awayTimerRef.current);
-                    awayTimerRef.current = null;
-                }
-            }
-        };
+    const handleCopy = (e) => {
+      e.preventDefault();
+      addViolation('copy', 'Clipboard Operation: Copying restricted during assessment.');
+    };
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            if (awayTimerRef.current) clearInterval(awayTimerRef.current);
-        };
-    }, [proctorActive]);
+    const handlePaste = (e) => {
+      e.preventDefault();
+      addViolation('paste', 'Clipboard Operation: Pasting restricted during assessment.');
+    };
 
-    // Handle window blur (clicking outside browser)
-    useEffect(() => {
-        if (!proctorActive) return;
+    const handleCut = (e) => {
+      e.preventDefault();
+      addViolation('cut', 'Clipboard Operation: Cutting restricted during assessment.');
+    };
 
-        const handleBlur = () => {
-            if (!document.hidden) {
-                addViolation('window_blur', '⚠️ You clicked outside the browser window!');
-            }
-        };
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      addViolation('right_click', 'Input Guard: Context menu access restricted.');
+    };
 
-        window.addEventListener('blur', handleBlur);
-        return () => window.removeEventListener('blur', handleBlur);
-    }, [proctorActive]);
+    document.addEventListener('copy', handleCopy);
+    document.addEventListener('paste', handlePaste);
+    document.addEventListener('cut', handleCut);
+    document.addEventListener('contextmenu', handleContextMenu);
 
-    // Block copy/paste
-    useEffect(() => {
-        if (!proctorActive) return;
+    return () => {
+      document.removeEventListener('copy', handleCopy);
+      document.removeEventListener('paste', handlePaste);
+      document.removeEventListener('cut', handleCut);
+      document.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, [proctorActive, addViolation]);
 
-        const handleCopy = (e) => {
-            e.preventDefault();
-            addViolation('copy', '🚫 Copying is disabled during proctored sessions!');
-        };
+  // Shortcut key guards
+  useEffect(() => {
+    if (!proctorActive) return;
 
-        const handlePaste = (e) => {
-            e.preventDefault();
-            addViolation('paste', '🚫 Pasting is disabled during proctored sessions!');
-        };
+    const handleActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
 
-        const handleCut = (e) => {
-            e.preventDefault();
-            addViolation('cut', '🚫 Cutting is disabled during proctored sessions!');
-        };
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && (e.key === 'c' || e.key === 'v' || e.key === 'x' || e.key === 'a')) {
+        e.preventDefault();
+        addViolation('shortcut', 'Keyboard Guard: Clipboard shortcuts restricted.');
+      }
+      if (e.altKey && e.key === 'Tab') {
+        e.preventDefault();
+        addViolation('alt_tab', 'Navigation Guard: Alt+Tab restricted.');
+      }
+      if (e.key === 'F12') {
+        e.preventDefault();
+        addViolation('devtools', 'Inspection Guard: Developer tools restricted.');
+      }
+      lastActivityRef.current = Date.now();
+    };
 
-        const handleContextMenu = (e) => {
-            e.preventDefault();
-            addViolation('right_click', '🚫 Right-click is disabled during proctored sessions!');
-        };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousemove', handleActivity);
+    document.addEventListener('click', handleActivity);
 
-        document.addEventListener('copy', handleCopy);
-        document.addEventListener('paste', handlePaste);
-        document.addEventListener('cut', handleCut);
-        document.addEventListener('contextmenu', handleContextMenu);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousemove', handleActivity);
+      document.removeEventListener('click', handleActivity);
+    };
+  }, [proctorActive, addViolation]);
 
-        return () => {
-            document.removeEventListener('copy', handleCopy);
-            document.removeEventListener('paste', handlePaste);
-            document.removeEventListener('cut', handleCut);
-            document.removeEventListener('contextmenu', handleContextMenu);
-        };
-    }, [proctorActive]);
+  if (!enabled) return null;
 
-    // Track idle time (no keyboard/mouse activity)
-    useEffect(() => {
-        if (!proctorActive) return;
-
-        const handleActivity = () => {
-            lastActivityRef.current = Date.now();
-        };
-
-        const handleKeyDown = (e) => {
-            // Block common shortcut keys that could be used for cheating
-            if (e.ctrlKey && (e.key === 'c' || e.key === 'v' || e.key === 'x' || e.key === 'a')) {
-                e.preventDefault();
-                addViolation('shortcut', '🚫 Keyboard shortcuts (Ctrl+C/V/X/A) are disabled!');
-            }
-            if (e.altKey && e.key === 'Tab') {
-                e.preventDefault();
-                addViolation('alt_tab', '🚫 Alt+Tab is disabled during proctored sessions!');
-            }
-            if (e.key === 'F12') {
-                e.preventDefault();
-                addViolation('devtools', '🚫 Developer tools are disabled during proctored sessions!');
-            }
-            lastActivityRef.current = Date.now();
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        document.addEventListener('mousemove', handleActivity);
-        document.addEventListener('click', handleActivity);
-
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.removeEventListener('mousemove', handleActivity);
-            document.removeEventListener('click', handleActivity);
-        };
-    }, [proctorActive]);
-
-    // Proctoring disabled globally by admin — render nothing
-    if (!enabled) {
-        return null;
-    }
-
-    // If not started, show confirmation dialog
-    if (!proctorActive) {
-        return (
-            <div className="modal-overlay" style={{ zIndex: 9999 }}>
-                <div className="modal-content" style={{ maxWidth: '500px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🛡️</div>
-                    <h3 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '8px' }}>
-                        Proctored Session
-                    </h3>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: 1.6 }}>
-                        This problem is being solved in a <strong>proctored environment</strong> to ensure academic integrity.
-                        <br /><br />
-                        The following are monitored:
-                    </p>
-                    <div style={{ textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div>🚫 <strong>Tab switching</strong> — leaving this tab is recorded</div>
-                        <div>🚫 <strong>Copy/Paste</strong> — disabled during session</div>
-                        <div>🚫 <strong>Right-click</strong> — disabled during session</div>
-                        <div>🚫 <strong>Keyboard shortcuts</strong> — Ctrl+C/V/X/A, Alt+Tab, F12 blocked</div>
-                        <div>📊 <strong>Idle time</strong> — extended inactivity is flagged</div>
-                    </div>
-                    <button
-                        className="btn-primary"
-                        style={{ width: '100%', padding: '12px' }}
-                        onClick={startProctoring}
-                    >
-                        🛡️ I Understand — Start Proctored Session
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    // Show proctoring status bar
+  // Initial agreement modal before starting problem
+  if (!proctorActive) {
     return (
-        <>
-            {/* Proctoring status bar */}
-            <div style={{
-                position: 'fixed',
-                bottom: '16px',
-                right: '16px',
-                zIndex: 9998,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                alignItems: 'flex-end'
-            }}>
-                {/* Warning toast */}
-                {warningVisible && (
-                    <div style={{
-                        padding: '12px 20px',
-                        borderRadius: '10px',
-                        background: 'rgba(239, 68, 68, 0.95)',
-                        color: 'white',
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                        boxShadow: '0 4px 20px rgba(239, 68, 68, 0.3)',
-                        animation: 'slideIn 0.3s ease',
-                        maxWidth: '350px'
-                    }}>
-                        {warningMessage}
-                    </div>
-                )}
-
-                {/* Proctor status pill */}
-                <div style={{
-                    padding: '8px 16px',
-                    borderRadius: '30px',
-                    background: isAway ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)',
-                    color: 'white',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-                }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'white', display: 'inline-block', animation: isAway ? 'pulse 1s infinite' : 'none' }} />
-                    {isAway ? `⚠ Away ${awayTime}s` : `🛡️ Proctored • ${violations.length} violation${violations.length !== 1 ? 's' : ''}`}
-                </div>
+      <div className="modal-overlay" style={{ zIndex: 9999 }}>
+        <div className="modal-content" style={{ maxWidth: '480px' }}>
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.5px' }}>
+              Assessment Governance
             </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+              Academic Integrity Environment
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              This challenge runs in an evaluated sandbox with automated integrity monitoring.
+            </p>
+          </div>
 
-            <style jsx>{`
-        @keyframes slideIn {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.3; }
-        }
-      `}</style>
-        </>
+          <div style={{
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '6px',
+            padding: '14px 16px',
+            fontSize: '0.8rem',
+            color: 'var(--text-secondary)',
+            marginBottom: '18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ color: 'var(--primary)', fontWeight: 700 }}>•</span>
+              <span><strong>Tab Switches:</strong> Browser tab changes are logged to the assessment session.</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ color: 'var(--primary)', fontWeight: 700 }}>•</span>
+              <span><strong>Clipboard Isolation:</strong> External copy and paste operations are blocked.</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ color: 'var(--primary)', fontWeight: 700 }}>•</span>
+              <span><strong>Window Focus:</strong> Viewport exits and background blur events are tracked.</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ color: 'var(--primary)', fontWeight: 700 }}>•</span>
+              <span><strong>Keyboard Guards:</strong> Inspection shortcuts and Alt+Tab are restricted.</span>
+            </div>
+          </div>
+
+          <button
+            className="btn-primary"
+            style={{ width: '100%', padding: '10px' }}
+            onClick={startProctoring}
+          >
+            Acknowledge & Begin Proctored Session
+          </button>
+        </div>
+      </div>
     );
+  }
+
+  // Active session status pill & warning toast
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: '16px',
+      right: '16px',
+      zIndex: 9998,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      alignItems: 'flex-end'
+    }}>
+      {/* Warning Toast */}
+      {warningVisible && (
+        <div style={{
+          padding: '10px 16px',
+          borderRadius: '6px',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--danger-border)',
+          color: 'var(--danger)',
+          fontSize: '0.8rem',
+          fontWeight: 600,
+          boxShadow: 'var(--shadow-card)',
+          maxWidth: '340px'
+        }}>
+          ⚠ {warningMessage}
+        </div>
+      )}
+
+      {/* Proctor status indicator */}
+      <div style={{
+        padding: '6px 14px',
+        borderRadius: '20px',
+        background: 'var(--bg-card)',
+        border: `1px solid ${isAway ? 'var(--danger-border)' : 'var(--border-medium)'}`,
+        color: isAway ? 'var(--danger)' : 'var(--text-primary)',
+        fontSize: '0.72rem',
+        fontWeight: 600,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        boxShadow: 'var(--shadow-card)'
+      }}>
+        <span style={{
+          width: '7px',
+          height: '7px',
+          borderRadius: '50%',
+          background: isAway ? 'var(--danger)' : 'var(--easy)',
+          display: 'inline-block'
+        }} />
+        <span>
+          {isAway ? `Focus Lost (${awayTime}s)` : `Proctored Session • ${violations.length} Incident${violations.length !== 1 ? 's' : ''}`}
+        </span>
+      </div>
+    </div>
+  );
 }

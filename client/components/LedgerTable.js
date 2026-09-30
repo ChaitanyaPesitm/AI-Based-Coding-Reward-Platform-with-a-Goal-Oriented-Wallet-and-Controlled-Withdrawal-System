@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { adminAPI } from '@/lib/api';
 
 export default function LedgerTable() {
@@ -9,7 +9,7 @@ export default function LedgerTable() {
   const [msg, setMsg] = useState('');
   const [showAdjust, setShowAdjust] = useState(false);
 
-  const fetchLedger = async () => {
+  const fetchLedger = useCallback(async () => {
     try {
       const res = await adminAPI.getLedger({ limit: 30 });
       setEntries(res.data.data);
@@ -18,19 +18,18 @@ export default function LedgerTable() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLedger();
-  }, []);
+  }, [fetchLedger]);
 
   const handleAdjust = async (e) => {
     e.preventDefault();
     setMsg('');
     try {
       await adminAPI.adjustPoints(adjust);
-      setMsg(`Adjusted ${adjust.amount} pts. Entry recorded to the ledger.`);
+      setMsg(`Adjusted ${adjust.amount} pts. Transaction journaled.`);
       setAdjust({ userId: '', amount: '', reason: '' });
       setShowAdjust(false);
       fetchLedger();
@@ -40,50 +39,55 @@ export default function LedgerTable() {
   };
 
   const badge = (type) => ({
-    earn: 'rgba(16, 185, 129, 0.15)',
-    spend: 'rgba(239, 68, 68, 0.15)',
-    adjust: 'rgba(245, 158, 11, 0.15)'
+    earn: 'var(--success-subtle)',
+    spend: 'var(--danger-subtle)',
+    adjust: 'var(--warning-subtle)'
   }[type] || 'var(--bg-secondary)');
 
   const badgeColor = (type) => ({
     earn: 'var(--easy)',
     spend: 'var(--hard)',
-    adjust: 'var(--medium)'
+    adjust: 'var(--warning)'
   }[type] || 'var(--text-secondary)');
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-        <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Every point movement is journaled here. Entries are immutable.</span>
-        <button className="btn-secondary" style={{ padding: '6px 14px', fontSize: '0.78rem' }} onClick={() => setShowAdjust(!showAdjust)}>
-          {showAdjust ? 'Close' : '+ Manual Adjustment'}
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+          Immutable Transaction Journal • Double-entry credit records
+        </span>
+        <button className="btn-secondary" style={{ padding: '5px 12px', fontSize: '0.75rem' }} onClick={() => setShowAdjust(!showAdjust)}>
+          {showAdjust ? 'Cancel' : '+ Manual Credit Adjustment'}
         </button>
       </div>
 
       {showAdjust && (
-        <form onSubmit={handleAdjust} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', padding: '14px', borderRadius: '12px', background: 'var(--bg-secondary)', marginBottom: '12px' }}>
+        <form onSubmit={handleAdjust} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', padding: '12px', borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', marginBottom: '14px' }}>
           <input className="input-field" placeholder="User ID" value={adjust.userId} onChange={(e) => setAdjust({ ...adjust, userId: e.target.value })} required />
           <input className="input-field" type="number" placeholder="Amount (+/- pts)" value={adjust.amount} onChange={(e) => setAdjust({ ...adjust, amount: e.target.value })} required />
-          <input className="input-field" placeholder="Reason" value={adjust.reason} onChange={(e) => setAdjust({ ...adjust, reason: e.target.value })} required />
-          <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.8rem' }}>Apply</button>
-          {msg && <div style={{ gridColumn: '1 / -1', fontSize: '0.8rem', color: 'var(--accent-primary)' }}>{msg}</div>}
+          <input className="input-field" placeholder="Audit Reason" value={adjust.reason} onChange={(e) => setAdjust({ ...adjust, reason: e.target.value })} required />
+          <button type="submit" className="btn-primary" style={{ padding: '6px 14px', fontSize: '0.78rem' }}>Apply</button>
+          {msg && <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 600 }}>{msg}</div>}
         </form>
       )}
 
       {loading ? (
-        <div className="spinner" style={{ margin: '20px auto' }} />
+        <div style={{ padding: '24px', textAlign: 'center' }}>
+          <div className="spinner" style={{ margin: '0 auto 8px' }} />
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Loading journal entries...</span>
+        </div>
       ) : entries.length > 0 ? (
         <div style={{ overflowX: 'auto', maxHeight: '420px', overflowY: 'auto' }}>
           <table className="data-table">
             <thead>
               <tr>
-                <th>User</th>
+                <th>User Account</th>
                 <th>Type</th>
                 <th>Source</th>
-                <th>Points</th>
+                <th>Points Change</th>
                 <th>Description</th>
-                <th>Balance</th>
-                <th>Date</th>
+                <th>Balance After</th>
+                <th>Recorded At</th>
               </tr>
             </thead>
             <tbody>
@@ -91,18 +95,22 @@ export default function LedgerTable() {
                 <tr key={t._id}>
                   <td style={{ fontWeight: 600 }}>{t.user?.name || 'Unknown'}</td>
                   <td><span className="badge" style={{ background: badge(t.type), color: badgeColor(t.type), textTransform: 'capitalize' }}>{t.type}</span></td>
-                  <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t.source}</td>
-                  <td style={{ fontWeight: 700, color: t.amount >= 0 ? 'var(--easy)' : 'var(--hard)' }}>{t.amount >= 0 ? '+' : ''}{t.amount}</td>
-                  <td style={{ fontSize: '0.8rem' }}>{t.description}</td>
-                  <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.balanceAfter}</td>
-                  <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{new Date(t.createdAt).toLocaleDateString()}</td>
+                  <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t.source}</td>
+                  <td style={{ fontWeight: 700, color: t.amount >= 0 ? 'var(--easy)' : 'var(--hard)', fontVariantNumeric: 'tabular-nums' }}>
+                    {t.amount >= 0 ? '+' : ''}{t.amount}
+                  </td>
+                  <td style={{ fontSize: '0.78rem' }}>{t.description}</td>
+                  <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{t.balanceAfter}</td>
+                  <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(t.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '16px' }}>No ledger entries yet.</p>
+        <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '16px', fontSize: '0.82rem' }}>
+          No journal entries recorded in the ledger.
+        </p>
       )}
     </div>
   );
