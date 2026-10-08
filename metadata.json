@@ -1,0 +1,7 @@
+{
+  "name": "CodeReward - AI-Based Coding Reward Platform",
+  "description": "Earn reward points by solving coding problems. AI evaluates your code quality, and you can withdraw real rewards once your financial goal is met.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -14,14 +14,18 @@ const connectDB = async () => {
       const conn = await mongoose.connect(mongoUri);
       console.log(`⚡ In-Memory MongoDB Connected at ${mongoUri}`);
     } catch (memError) {
-      console.error(`❌ In-Memory MongoDB Connection Error: ${memError.message}`);
-      process.exit(1);
+      console.warn(`⚠️ In-Memory MongoDB fallback also unavailable: ${memError.message}`);
+      return;
     }
   }
 
-  // Auto-seed admin user and default problems
-  const autoSeed = require('../utils/autoSeed');
-  await autoSeed();
+  try {
+    // Auto-seed admin user and default problems
+    const autoSeed = require('../utils/autoSeed');
+    await autoSeed();
+  } catch (seedError) {
+    console.warn(`⚠️ Auto-seed warning: ${seedError.message}`);
+  }
 };
 
 module.exports = connectDB;

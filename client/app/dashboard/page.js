@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { walletAPI, goalsAPI, submissionsAPI, authAPI, recommendationsAPI, fraudAPI } from '@/lib/api';
 import GoalAd from '@/components/GoalAd';
+import CompletionChart from '@/components/CompletionChart';
 import Link from 'next/link';
 
 const BADGE_META = {
@@ -39,7 +40,7 @@ export default function DashboardPage() {
       const [walletRes, goalsRes, subsRes, meRes, recRes, anaRes, fraudRes] = await Promise.all([
         walletAPI.getOverview().catch(() => ({ data: { data: null } })),
         goalsAPI.getAll().catch(() => ({ data: { data: [] } })),
-        submissionsAPI.getAll({ limit: 5 }).catch(() => ({ data: { data: [] } })),
+        submissionsAPI.getAll({ limit: 50 }).catch(() => ({ data: { data: [] } })),
         authAPI.getMe().catch(() => ({ data: { data: null } })),
         recommendationsAPI.get().catch(() => ({ data: { data: null } })),
         submissionsAPI.getAnalytics().catch(() => ({ data: { data: null } })),
@@ -187,6 +188,9 @@ export default function DashboardPage() {
             </span>
           </div>
         </div>
+
+        {/* 7-Day Coding Problem Completion History (Recharts Bar Chart) */}
+        <CompletionChart rawData={analytics?.last7Days} submissions={recentSubs} />
 
         {/* Active Financial Goal Card */}
         <div style={{ marginBottom: '24px' }}>

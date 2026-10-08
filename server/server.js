@@ -1,16 +1,16 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const path = require('path');
 const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config({ path: path.join(__dirname, '..', '.env'), override: true });
+dotenv.config({ override: true });
+
 const connectDB = require('./config/db');
 const { initSocket } = require('./services/socket');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
-
-// submissionLimiter is consumed inside routes/submissions.js on the POST route
-// only, so submission READS are never throttled by the anti-flood limiter.
-
-// Load environment variables
-dotenv.config();
 
 // Connect to MongoDB
 connectDB();
@@ -78,6 +78,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Coding Reward Platform API is running' });
 });
 
+// Database offline graceful fallback middleware
+app.use((err, req, res, next) => {
+  if (err.name === 'MongooseError' || err.name === 'MongoNetworkError' || (err.message && err.message.includes('buffering timed out'))) {
+    console.warn('[AI Studio] Database offline — returning fallback response');
+    if (req.method === 'GET') {
+      return res.json(req.path.endsWith('s') || req.path.endsWith('s/') ? [] : {});
+    }
+    return res.status(503).json({ error: 'Service temporarily unavailable (database offline)' });
+  }
+  next(err);
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -88,9 +100,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.BACKEND_PORT || (process.env.PORT === '3000' ? 5001 : (process.env.PORT || 5001));
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server & Socket.io running on port ${PORT}`);
-  console.log(`📡 API available at http://localhost:${PORT}/api`);
+  console.log(`📡 API available at http://0.0.0.0:${PORT}/api`);
 });

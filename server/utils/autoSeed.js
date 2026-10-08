@@ -3,6 +3,7 @@ const Problem = require('../models/Problem');
 const Ad = require('../models/Ad');
 const Goal = require('../models/Goal');
 const Withdrawal = require('../models/Withdrawal');
+const Submission = require('../models/Submission');
 
 // Seed ads migrated from the old hardcoded mock list. rewardPoints enables the
 // rewarded-watch flow (+points for watching).
@@ -212,6 +213,65 @@ const autoSeed = async () => {
         user: demoStudent._id,
         status: { $in: ['pending', 'verified'] }
       });
+
+      // Seed 7-day completion history if no submissions exist
+      const existingSubsCount = await Submission.countDocuments({ user: demoStudent._id });
+      if (existingSubsCount === 0) {
+        const problems = await Problem.find({});
+        if (problems.length > 0) {
+          const now = new Date();
+          const seedActivity = [
+            { daysAgo: 6, probIdx: 0, points: 100, aiScore: 88, time: 24, lang: 'c' },
+            { daysAgo: 5, probIdx: 1, points: 100, aiScore: 92, time: 18, lang: 'c' },
+            { daysAgo: 5, probIdx: 3, points: 100, aiScore: 85, time: 32, lang: 'python' },
+            { daysAgo: 3, probIdx: 4, points: 150, aiScore: 90, time: 45, lang: 'python' },
+            { daysAgo: 2, probIdx: 5, points: 100, aiScore: 95, time: 55, lang: 'java' },
+            { daysAgo: 2, probIdx: 2, points: 150, aiScore: 84, time: 38, lang: 'c' },
+            { daysAgo: 1, probIdx: 3, points: 100, aiScore: 91, time: 28, lang: 'python' },
+            { daysAgo: 0, probIdx: 0, points: 100, aiScore: 96, time: 21, lang: 'c' },
+            { daysAgo: 0, probIdx: 5, points: 100, aiScore: 89, time: 42, lang: 'java' }
+          ];
+
+          let totalEarned = 0;
+          let solvedCount = 0;
+
+          for (const item of seedActivity) {
+            const prob = problems[item.probIdx % problems.length];
+            const subDate = new Date(now.getTime() - item.daysAgo * 86400000 - Math.random() * 3600000 * 4);
+            await Submission.create({
+              user: demoStudent._id,
+              problem: prob._id,
+              code: prob.starterCode,
+              language: item.lang,
+              status: 'accepted',
+              testCasesPassed: prob.testCases?.length || 4,
+              totalTestCases: prob.testCases?.length || 4,
+              aiScore: item.aiScore,
+              aiFeedback: {
+                timeComplexity: 'O(N)',
+                spaceComplexity: 'O(1)',
+                codeQuality: item.aiScore,
+                efficiency: item.aiScore,
+                suggestions: 'Clean and optimal implementation.'
+              },
+              pointsEarned: item.points,
+              executionTime: item.time,
+              createdAt: subDate,
+              updatedAt: subDate
+            });
+            totalEarned += item.points;
+            solvedCount += 1;
+          }
+
+          demoStudent.problemsSolved = solvedCount;
+          demoStudent.totalPointsEarned = totalEarned;
+          demoStudent.currentStreak = 3;
+          demoStudent.longestStreak = 5;
+          demoStudent.lastActivityDate = now;
+          await demoStudent.save();
+          console.log(`📈 Seeded 7-day completion history (${seedActivity.length} submissions) for demo student`);
+        }
+      }
     }
   } catch (err) {
     console.error('Auto-seed error:', err.message);

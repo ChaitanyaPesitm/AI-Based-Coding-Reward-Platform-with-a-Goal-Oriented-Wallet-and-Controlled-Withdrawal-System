@@ -9,6 +9,10 @@ export const metadata = {
   title: 'CodeReward - AI-Based Coding Reward Platform',
   description: 'Earn reward points by solving coding problems. AI evaluates your code quality, and you can withdraw real rewards once your financial goal is met.',
   keywords: 'coding platform, AI code evaluation, reward system, goal-oriented wallet, coding practice',
+  openGraph: {
+    title: 'CodeReward - AI-Based Coding Reward Platform',
+    description: 'Earn reward points by solving coding problems. AI evaluates your code quality, and you can withdraw real rewards once your financial goal is met.',
+  },
 };
 
 export default function RootLayout({ children }) {

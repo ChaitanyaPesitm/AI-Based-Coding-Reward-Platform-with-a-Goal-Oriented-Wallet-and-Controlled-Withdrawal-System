@@ -524,6 +524,51 @@ router.get('/analytics', async (req, res) => {
       acceptRate: p.attempts ? Math.round((p.accepted / p.attempts) * 100) : 0
     })).sort((a, b) => b.attempts - a.attempts);
 
+    // 7-day completion history for consistency visualization
+    const now = new Date();
+    const last7Days = [];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      const dayLabel = dayNames[d.getDay()];
+      const shortDate = `${monthNames[d.getMonth()]} ${d.getDate()}`;
+
+      const daySubs = submissions.filter(s => {
+        const sDate = new Date(s.createdAt);
+        return sDate.getFullYear() === d.getFullYear() &&
+               sDate.getMonth() === d.getMonth() &&
+               sDate.getDate() === d.getDate();
+      });
+
+      const acceptedSubs = daySubs.filter(s => s.status === 'accepted');
+      const uniqueSolvedIds = new Set(acceptedSubs.map(s => String(s.problem?._id || s.problem)));
+
+      const easyCount = acceptedSubs.filter(s => s.problem?.difficulty === 'easy').length;
+      const mediumCount = acceptedSubs.filter(s => s.problem?.difficulty === 'medium').length;
+      const hardCount = acceptedSubs.filter(s => s.problem?.difficulty === 'hard').length;
+      const dayPoints = daySubs.reduce((sum, s) => sum + (s.pointsEarned || 0), 0);
+
+      last7Days.push({
+        date: dateStr,
+        day: dayLabel,
+        shortDate,
+        completedCount: acceptedSubs.length,
+        uniqueSolvedCount: uniqueSolvedIds.size,
+        totalSubmissions: daySubs.length,
+        pointsEarned: dayPoints,
+        easy: easyCount,
+        medium: mediumCount,
+        hard: hardCount
+      });
+    }
+
     res.json({
       success: true,
       data: {
@@ -538,6 +583,7 @@ router.get('/analytics', async (req, res) => {
           pointsEarned: submissions.reduce((a, b) => a + (b.pointsEarned || 0), 0)
         },
         series,
+        last7Days,
         problemStats
       }
     });

@@ -10,7 +10,8 @@ export default function NotificationListener() {
   useEffect(() => {
     if (!user) return;
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000', {
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || undefined, {
+      path: '/socket.io',
       withCredentials: true
     });
 
