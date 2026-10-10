@@ -110,6 +110,36 @@ router.post('/login', async (req, res) => {
 router.get('/me', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
+    
+    // Daily Quest Assignment Logic
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let questUpdated = false;
+    if (!user.dailyQuest || !user.dailyQuest.assignedAt || user.dailyQuest.assignedAt < today) {
+      const quests = [
+        { desc: 'Solve 2 Python challenges', target: 2, reward: 50 },
+        { desc: 'Solve 1 Medium difficulty challenge', target: 1, reward: 75 },
+        { desc: 'Achieve an AI Score of 90+ on any problem', target: 1, reward: 100 },
+        { desc: 'Execute 3 challenges successfully', target: 3, reward: 60 }
+      ];
+      const randomQuest = quests[Math.floor(Math.random() * quests.length)];
+      
+      user.dailyQuest = {
+        description: randomQuest.desc,
+        target: randomQuest.target,
+        progress: 0,
+        rewardPoints: randomQuest.reward,
+        completed: false,
+        assignedAt: new Date()
+      };
+      questUpdated = true;
+    }
+    
+    if (questUpdated) {
+      await user.save();
+    }
+
     res.json({
       success: true,
       data: {
@@ -119,6 +149,10 @@ router.get('/me', protect, async (req, res) => {
         isAdmin: user.isAdmin,
         totalPointsEarned: user.totalPointsEarned,
         problemsSolved: user.problemsSolved,
+        currentStreak: user.currentStreak,
+        longestStreak: user.longestStreak,
+        badges: user.badges,
+        dailyQuest: user.dailyQuest,
         createdAt: user.createdAt
       }
     });

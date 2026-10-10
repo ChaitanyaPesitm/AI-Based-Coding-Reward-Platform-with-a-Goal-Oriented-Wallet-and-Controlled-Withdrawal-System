@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { problemsAPI, submissionsAPI, settingsAPI } from '@/lib/api';
@@ -30,7 +30,21 @@ export default function SolveProblemPage() {
   const [adTimer, setAdTimer] = useState(5);
   const [adWatching, setAdWatching] = useState(false);
   const [hintUnlocked, setHintUnlocked] = useState(false);
+  const [hintLoading, setHintLoading] = useState(false);
   const [aiHintText, setAiHintText] = useState('');
+
+  // Phase 3: Senior Dev Review state
+  const [seniorDevQuestion, setSeniorDevQuestion] = useState(null);
+  const [seniorDevAnswer, setSeniorDevAnswer] = useState('');
+  const [seniorDevGrading, setSeniorDevGrading] = useState(false);
+  const [seniorDevResult, setSeniorDevResult] = useState(null);
+
+  // Phase 4: Rubber Duck state
+  const [showDuck, setShowDuck] = useState(false);
+  const [duckMessage, setDuckMessage] = useState('');
+  const [duckHistory, setDuckHistory] = useState([]);
+  const [duckLoading, setDuckLoading] = useState(false);
+  const duckEndRef = useRef(null);
 
   // Proctoring state
   const [proctoringEnabled, setProctoringEnabled] = useState(true);
@@ -41,8 +55,12 @@ export default function SolveProblemPage() {
         problemsAPI.getById(params.id),
         settingsAPI.get().catch(() => ({ data: { data: { proctoringEnabled: true } } }))
       ]);
-      setProblem(res.data.data);
-      setCode(res.data.data.starterCode || '');
+      const fetchedProblem = res.data.data;
+      setProblem(fetchedProblem);
+      
+      const userKey = user?.id || user?._id || 'guest';
+      const savedCode = localStorage.getItem(`code_${userKey}_${fetchedProblem._id}_${fetchedProblem.language}`);
+      setCode(savedCode !== null ? savedCode : (fetchedProblem.starterCode || ''));
       setProctoringEnabled(settingsRes.data.data?.proctoringEnabled !== false);
     } catch (err) {
       console.error('Failed to fetch problem:', err);
@@ -61,6 +79,15 @@ export default function SolveProblemPage() {
     }
   }, [user, params.id]);
 
+  const handleCodeChange = (value) => {
+    const newCode = value || '';
+    setCode(newCode);
+    if (problem) {
+      const userKey = user?.id || user?._id || 'guest';
+      localStorage.setItem(`code_${userKey}_${problem._id}_${problem.language}`, newCode);
+    }
+  };
+
   const handleStartAd = () => {
     setShowAdModal(true);
     setAdWatching(true);
@@ -72,14 +99,24 @@ export default function SolveProblemPage() {
           clearInterval(interval);
           setAdWatching(false);
           setHintUnlocked(true);
-          problemsAPI.unlockHint(params.id)
+          setHintLoading(true);
+
+          // Request AI Hint from server
+          problemsAPI.unlockHint(params.id, { code, language: problem?.language })
             .then(res => {
-              setAiHintText(res.data.data?.hint || aiHintText);
+              const returnedHint = res.data?.data?.hint;
+              if (returnedHint) {
+                setAiHintText(returnedHint);
+              }
             })
-            .catch(() => {
+            .catch(err => {
+              console.warn('Hint unlock warning:', err);
               setAiHintText(
-                `Algorithmic Suggestion: Validate boundary constraints (e.g. empty or negative inputs). Maintain separation between state tracking and result aggregation.`
+                'Algorithmic Suggestion: Validate boundary constraints (e.g. empty or negative inputs). Break down the problem step-by-step before writing code!'
               );
+            })
+            .finally(() => {
+              setHintLoading(false);
             });
           return 0;
         }
@@ -92,6 +129,9 @@ export default function SolveProblemPage() {
     if (!code.trim()) return;
     setSubmitting(true);
     setResult(null);
+    setSeniorDevQuestion(null);
+    setSeniorDevResult(null);
+    setSeniorDevAnswer('');
     try {
       const res = await submissionsAPI.submit({
         problemId: params.id,
@@ -99,12 +139,66 @@ export default function SolveProblemPage() {
         language: problem.language
       });
       setResult(res.data.data);
+      if (res.data.data?.seniorDevQuestion) {
+        setSeniorDevQuestion(res.data.data.seniorDevQuestion);
+      }
     } catch (err) {
       setResult({
         error: err.response?.data?.message || 'Submission failed. Please check runtime errors.'
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSeniorDevSubmit = async () => {
+    if (!seniorDevAnswer.trim() || !seniorDevQuestion) return;
+    setSeniorDevGrading(true);
+    try {
+      const res = await problemsAPI.seniorDevAnswer(params.id, {
+        question: seniorDevQuestion,
+        answer: seniorDevAnswer
+      });
+      setSeniorDevResult(res.data.data);
+    } catch {
+      setSeniorDevResult({ correct: false, feedback: 'Evaluation failed. Please try again.', bonusPoints: 0 });
+    } finally {
+      setSeniorDevGrading(false);
+    }
+  };
+
+  const handleDuckSubmit = async (e) => {
+    e?.preventDefault();
+    const cleanMsg = duckMessage.trim();
+    if (!cleanMsg || duckLoading) return;
+
+    const newHistory = [...duckHistory, { role: 'user', content: cleanMsg }];
+    setDuckHistory(newHistory);
+    setDuckMessage('');
+    setDuckLoading(true);
+
+    try {
+      const res = await problemsAPI.rubberDuckChat(params.id, {
+        message: cleanMsg,
+        code,
+        history: duckHistory
+      });
+      const duckReply = res.data?.data?.reply || "Quack! I hear you. What happens if you trace the loop with an example?";
+      setDuckHistory([...newHistory, { role: 'assistant', content: duckReply }]);
+    } catch (err) {
+      console.warn('Rubber Duck error:', err);
+      setDuckHistory([
+        ...newHistory,
+        {
+          role: 'assistant',
+          content: "Quack! Let's think: what does the problem ask for as input, and what should the output look like at each step?"
+        }
+      ]);
+    } finally {
+      setDuckLoading(false);
+      setTimeout(() => {
+        duckEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
     }
   };
 
@@ -301,6 +395,95 @@ export default function SolveProblemPage() {
               <ResultPanel result={result} />
             </div>
           )}
+
+          {/* Phase 3: AI Dynamic Edge Case Results */}
+          {result?.edgeCaseSummary && (
+            <div style={{
+              marginTop: '16px',
+              padding: '14px 16px',
+              borderRadius: '8px',
+              background: result.edgeCaseSummary.allPassed ? 'var(--success-subtle)' : 'var(--warning-subtle)',
+              border: `1px solid ${result.edgeCaseSummary.allPassed ? 'var(--success-border)' : 'var(--warning-border)'}`
+            }}>
+              <div style={{ fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', color: result.edgeCaseSummary.allPassed ? 'var(--easy)' : 'var(--warning)' }}>
+                AI-Generated Edge Cases — {result.edgeCaseSummary.passed}/{result.edgeCaseSummary.total} Passed
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {result.edgeCaseResults?.map((ec, i) => (
+                  <div key={i} style={{ fontSize: '0.78rem', padding: '6px 10px', borderRadius: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-secondary)' }}>
+                      Input: {ec.input || '(empty)'}
+                    </span>
+                    <span style={{ fontWeight: 700, color: ec.passed ? 'var(--easy)' : 'var(--hard)', whiteSpace: 'nowrap' }}>
+                      {ec.passed ? '✓ Pass' : `✗ ${ec.status}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Phase 3: Senior Dev Follow-up Question */}
+          {seniorDevQuestion && (
+            <div style={{
+              marginTop: '16px',
+              padding: '16px',
+              borderRadius: '8px',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-medium)'
+            }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                Senior Dev Code Review (+20 pts if correct)
+              </div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.6, marginBottom: '12px' }}>
+                {seniorDevQuestion}
+              </p>
+
+              {!seniorDevResult ? (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <textarea
+                    value={seniorDevAnswer}
+                    onChange={(e) => setSeniorDevAnswer(e.target.value)}
+                    placeholder="Type your conceptual answer here..."
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-medium)',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.82rem',
+                      resize: 'vertical',
+                      minHeight: '60px',
+                      fontFamily: 'inherit'
+                    }}
+                  />
+                  <button
+                    className="btn-primary"
+                    onClick={handleSeniorDevSubmit}
+                    disabled={seniorDevGrading || !seniorDevAnswer.trim()}
+                    style={{ padding: '8px 14px', fontSize: '0.8rem', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}
+                  >
+                    {seniorDevGrading ? 'Evaluating...' : 'Submit Answer'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '12px 14px',
+                  borderRadius: '6px',
+                  background: seniorDevResult.correct ? 'var(--success-subtle)' : 'var(--danger-subtle)',
+                  border: `1px solid ${seniorDevResult.correct ? 'var(--success-border)' : 'var(--danger-border)'}`
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: seniorDevResult.correct ? 'var(--easy)' : 'var(--hard)' }}>
+                    {seniorDevResult.correct ? `✓ Correct! +${seniorDevResult.bonusPoints} pts awarded` : '✗ Needs More Depth'}
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: 1.5 }}>
+                    {seniorDevResult.feedback}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right Pane: Code Editor */}
@@ -317,7 +500,12 @@ export default function SolveProblemPage() {
               Monaco Editor • {problem.language.toUpperCase()}
             </span>
             <button
-              onClick={() => setCode(problem.starterCode || '')}
+              onClick={() => {
+                const starter = problem.starterCode || '';
+                setCode(starter);
+                const userKey = user?.id || user?._id || 'guest';
+                localStorage.setItem(`code_${userKey}_${problem._id}_${problem.language}`, starter);
+              }}
               style={{
                 padding: '3px 8px',
                 borderRadius: '4px',
@@ -338,7 +526,7 @@ export default function SolveProblemPage() {
               language={MONACO_LANG_MAP[problem.language]}
               theme="vs-dark"
               value={code}
-              onChange={(value) => setCode(value || '')}
+              onChange={handleCodeChange}
               options={{
                 fontSize: 13,
                 fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
@@ -418,9 +606,16 @@ export default function SolveProblemPage() {
                   <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--easy)' }}>
                     ✓ AI Hint Activated
                   </div>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.5 }}>
-                    {aiHintText}
-                  </p>
+                  {hintLoading ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                      <div className="spinner" style={{ width: '14px', height: '14px' }} />
+                      <span>Consulting Socratic AI mentor for your code...</span>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                      {aiHintText || 'Break down the problem step-by-step and inspect sample test cases.'}
+                    </p>
+                  )}
                 </div>
                 <button className="btn-primary" style={{ width: '100%' }} onClick={() => setShowAdModal(false)}>
                   Return to Workspace
@@ -430,6 +625,82 @@ export default function SolveProblemPage() {
           </div>
         </div>
       )}
+
+      {/* Phase 4: Rubber Duck Debugging Chat Widget */}
+      <div style={{
+        position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '12px'
+      }}>
+        {showDuck && (
+          <div style={{
+            width: '340px', background: 'var(--bg-primary)',
+            border: '1px solid var(--border-medium)', borderRadius: '12px',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden'
+          }}>
+            <div style={{ padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>🦆 Rubber Duck Mentor</span>
+              <button onClick={() => setShowDuck(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+            </div>
+            <div style={{ height: '300px', overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ alignSelf: 'flex-start', background: 'var(--bg-secondary)', padding: '8px 12px', borderRadius: '12px', borderTopLeftRadius: '2px', fontSize: '0.8rem', maxWidth: '85%' }}>
+                Quack! I'm here to help you debug. I won't write code for you, but I can help you talk through your logic. What's stuck?
+              </div>
+              {duckHistory.map((msg, i) => (
+                <div key={i} style={{
+                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  background: msg.role === 'user' ? 'var(--primary)' : 'var(--bg-secondary)',
+                  color: msg.role === 'user' ? '#fff' : 'var(--text-primary)',
+                  padding: '8px 12px',
+                  borderRadius: '12px',
+                  borderTopRightRadius: msg.role === 'user' ? '2px' : '12px',
+                  borderTopLeftRadius: msg.role === 'assistant' ? '2px' : '12px',
+                  fontSize: '0.8rem',
+                  maxWidth: '85%',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {msg.content}
+                </div>
+              ))}
+              {duckLoading && (
+                <div style={{ alignSelf: 'flex-start', color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>
+                  Duck is thinking...
+                </div>
+              )}
+              <div ref={duckEndRef} />
+            </div>
+            <form onSubmit={handleDuckSubmit} style={{ padding: '12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '8px', background: 'var(--bg-secondary)' }}>
+              <input
+                type="text"
+                value={duckMessage}
+                onChange={(e) => setDuckMessage(e.target.value)}
+                placeholder="Talk to the duck..."
+                style={{ flex: 1, padding: '8px 12px', borderRadius: '20px', border: '1px solid var(--border-medium)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
+                disabled={duckLoading}
+              />
+              <button type="submit" disabled={duckLoading || !duckMessage.trim()} style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}>
+                ↑
+              </button>
+            </form>
+          </div>
+        )}
+        {!showDuck && (
+          <button
+            onClick={() => setShowDuck(true)}
+            style={{
+              width: '56px', height: '56px', borderRadius: '50%', background: 'var(--bg-primary)',
+              border: '2px solid var(--border-medium)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              fontSize: '1.5rem', display: 'flex', justifyContent: 'center', alignItems: 'center',
+              cursor: 'pointer', transition: 'transform 0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            title="Talk to Rubber Duck"
+          >
+            🦆
+          </button>
+        )}
+      </div>
 
       {/* Proctoring Overlay */}
       <ProctoringOverlay
@@ -506,6 +777,49 @@ function ResultPanel({ result }) {
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Credits Awarded</div>
         </div>
       </div>
+
+      {/* Test Case Execution Output */}
+      {result.judgeResults && result.judgeResults.length > 0 && (
+        <div className="panel-card" style={{ padding: '16px' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '10px' }}>
+            Test Cases Output & Diagnostic ({result.judgeResults.filter(r => r.passed).length}/{result.judgeResults.length} Passed)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {result.judgeResults.map((tc, idx) => (
+              <div
+                key={idx}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  background: 'var(--bg-secondary)',
+                  border: `1px solid ${tc.passed ? 'var(--success-border)' : 'var(--danger-border)'}`,
+                  fontSize: '0.8rem'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontWeight: 700, color: tc.passed ? 'var(--easy)' : 'var(--hard)' }}>
+                    Test Case #{idx + 1}: {tc.status}
+                  </span>
+                  {tc.time && <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{tc.time}s</span>}
+                </div>
+                {tc.input && (
+                  <div style={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '2px' }}>
+                    <strong>Input:</strong> {tc.input}
+                  </div>
+                )}
+                <div style={{ fontFamily: 'JetBrains Mono, monospace', color: tc.passed ? 'var(--easy)' : 'var(--danger)', fontSize: '0.75rem', marginTop: '2px' }}>
+                  <strong>Your Output:</strong> {tc.actualOutput || (tc.passed ? '[correct]' : '[no output]')}
+                </div>
+                {tc.error && (
+                  <div style={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--hard)', fontSize: '0.72rem', marginTop: '4px', whiteSpace: 'pre-wrap' }}>
+                    <strong>Error / Stderr:</strong> {tc.error}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* AI Code Evaluation Diagnostic */}
       {ai && (

@@ -7,8 +7,8 @@ const User = require('../models/User');
 const ProctorSession = require('../models/ProctorSession');
 const { protect, adminOnly } = require('../middleware/auth');
 const { submissionLimiter } = require('../middleware/rateLimiter');
-const { executeCode } = require('../services/wandbox');
-const { evaluateCode } = require('../services/gemini');
+const { executeCode } = require('../services/localRunner');
+const { evaluateCode, generateEdgeCases, getSeniorDevQuestion, analyzeStyleAnomaly } = require('../services/gemini');
 const { calculatePoints } = require('../services/rewardEngine');
 const { analyzeCode, compareComplexity } = require('../services/complexityAnalyzer');
 const { BADGE_META } = require('../services/badges');
@@ -226,6 +226,83 @@ router.post('/', submissionLimiter, async (req, res) => {
     };
     submission.plagiarismFlag = aiResult.plagiarismRisk > 70;
 
+    // Phase 4: AI Style Anomaly Detection
+    // Compares this submission's AI score & execution time against user's historical baseline.
+    // Flags wildly better performance as a potential style anomaly (possible code-sharing).
+    let styleAnomaly = null;
+    try {
+      const recentSubs = await Submission.find({
+        user: req.user._id,
+        aiScore: { $gt: 0 },
+        executionTime: { $gt: 0 },
+        _id: { $ne: submission._id }
+      }).select('aiScore executionTime').sort({ createdAt: -1 }).limit(20);
+
+      if (recentSubs.length >= 5) {
+        const avgAiScore = recentSubs.reduce((s, r) => s + r.aiScore, 0) / recentSubs.length;
+        const avgExecTime = recentSubs.reduce((s, r) => s + r.executionTime, 0) / recentSubs.length;
+        styleAnomaly = analyzeStyleAnomaly(
+          aiResult.aiScore,
+          judgeResult.executionTime || 0,
+          avgAiScore,
+          avgExecTime,
+          recentSubs.length
+        );
+
+        if (styleAnomaly.isAnomaly) {
+          // Merge into plagiarism flag for admin visibility (doesn't deduct points — informational)
+          submission.plagiarismFlag = true;
+          submission.aiFeedback.styleAnomalyReason = styleAnomaly.reason;
+          submission.aiFeedback.styleAnomalySeverity = styleAnomaly.severity;
+          console.warn(`[StyleAnomaly] User ${req.user._id}: ${styleAnomaly.reason}`);
+        }
+      }
+    } catch (saErr) {
+      console.warn('Style anomaly check skipped:', saErr.message);
+    }
+
+    // Phase 3: Dynamic Edge Case Testing (runs only when ALL static cases pass)
+    let edgeCaseResults = [];
+    let edgeCaseSummary = null;
+    if (judgeResult.allPassed && problem.sampleInput) {
+      try {
+        const aiEdgeCases = await generateEdgeCases(
+          problem.title,
+          problem.description,
+          submissionLanguage,
+          problem.sampleInput
+        );
+        if (aiEdgeCases.length > 0) {
+          const edgeRun = await executeCode(code, submissionLanguage, aiEdgeCases);
+          edgeCaseResults = edgeRun.results;
+          edgeCaseSummary = {
+            passed: edgeRun.passed,
+            total: edgeRun.total,
+            allPassed: edgeRun.allPassed
+          };
+          // If edge cases fail, we don't penalize points — it's informational only
+          // but flag it so the user can see which edge cases their code missed
+        }
+      } catch (edgeErr) {
+        console.warn('Edge case generation skipped:', edgeErr.message);
+      }
+    }
+
+    // Phase 3: Senior Dev Follow-up Question (only for accepted, first-time solves)
+    let seniorDevQuestion = null;
+    if (judgeResult.allPassed && !alreadySolved) {
+      try {
+        seniorDevQuestion = await getSeniorDevQuestion(
+          problem.title,
+          code,
+          submissionLanguage,
+          aiResult.timeComplexity || 'Unknown'
+        );
+      } catch (sdErr) {
+        console.warn('Senior dev question skipped:', sdErr.message);
+      }
+    }
+
     // Step 3: Server-side proctoring — read violations from the recorded session.
     // Client-supplied proctoring values are ignored; only a session the client
     // explicitly started (and the server recorded violations into) counts.
@@ -320,6 +397,49 @@ router.post('/', submissionLimiter, async (req, res) => {
         // Update daily streak
         updateStreak(freshUser);
 
+        // Daily Quest Progression
+        if (freshUser.dailyQuest && freshUser.dailyQuest.assignedAt) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const assignedDay = new Date(freshUser.dailyQuest.assignedAt);
+          assignedDay.setHours(0, 0, 0, 0);
+
+          if (assignedDay.getTime() === today.getTime() && !freshUser.dailyQuest.completed) {
+            let progressInc = 0;
+            const desc = freshUser.dailyQuest.description.toLowerCase();
+            
+            // Check quest criteria
+            if (desc.includes('python') && submissionLanguage === 'python') progressInc = 1;
+            else if (desc.includes('medium') && problem.difficulty === 'medium') progressInc = 1;
+            else if (desc.includes('ai score') && aiResult.aiScore >= 90) progressInc = 1;
+            else if (desc.includes('execute') || desc.includes('solve 1 coding challenge') || desc.includes('challenge')) progressInc = 1;
+            
+            if (progressInc > 0) {
+              freshUser.dailyQuest.progress += progressInc;
+              if (freshUser.dailyQuest.progress >= freshUser.dailyQuest.target) {
+                freshUser.dailyQuest.completed = true;
+                const qReward = freshUser.dailyQuest.rewardPoints || 50;
+                points += qReward;
+                freshUser.totalPointsEarned += qReward;
+                submission.pointsEarned += qReward;
+                await submission.save();
+                breakdown.questBonus = `+${qReward} (Daily Quest Completed!)`;
+                
+                // Add ledger transaction for Quest
+                await recordTransaction({
+                  user: req.user._id,
+                  type: 'earn',
+                  amount: qReward,
+                  source: 'other',
+                  reference: { model: 'Submission', id: submission._id },
+                  description: `Completed Daily Quest: ${freshUser.dailyQuest.description}`,
+                  metadata: { quest: freshUser.dailyQuest.description }
+                }).catch(err => console.error('Ledger quest failed:', err.message));
+              }
+            }
+          }
+        }
+
         // Award goal-based streak bonus (5% extra on 7+ day streaks)
         if (freshUser.currentStreak >= 7 && activeGoal) {
           const streakBonus = Math.round(points * 0.05);
@@ -384,9 +504,10 @@ router.post('/', submissionLimiter, async (req, res) => {
           status: r.status,
           passed: r.passed,
           time: r.time,
-          input: r.input ? r.input.substring(0, 50) + '...' : '',
-          expectedOutput: '[hidden]',
-          actualOutput: r.passed ? '[correct]' : '[incorrect]'
+          input: r.input ? r.input.substring(0, 80) : '',
+          expectedOutput: r.expectedOutput ? r.expectedOutput.substring(0, 80) : '[hidden]',
+          actualOutput: r.actualOutput ? r.actualOutput.substring(0, 160) : (r.passed ? '[correct]' : '[incorrect]'),
+          error: r.error || ''
         })),
         aiEvaluation: {
           score: aiResult.aiScore,
@@ -400,7 +521,15 @@ router.post('/', submissionLimiter, async (req, res) => {
         },
         pointsBreakdown: breakdown,
         pointsEarned: submission.pointsEarned,
-        newBadges
+        newBadges,
+        edgeCaseSummary,
+        edgeCaseResults: edgeCaseResults.map(r => ({
+          status: r.status,
+          passed: r.passed,
+          input: r.input ? r.input.substring(0, 80) : '',
+          actualOutput: r.passed ? '[correct]' : (r.actualOutput || '[incorrect]').substring(0, 80)
+        })),
+        seniorDevQuestion
       }
     });
   } catch (error) {

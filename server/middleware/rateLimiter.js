@@ -50,4 +50,16 @@ const adLimiter = rateLimit({
   }
 });
 
-module.exports = { authLimiter, apiLimiter, submissionLimiter, adLimiter };
+// AI action limiter — protect Gemini API quotas from spam
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many AI requests. Please slow down.'
+  }
+});
+
+module.exports = { authLimiter, apiLimiter, submissionLimiter, adLimiter, aiLimiter };

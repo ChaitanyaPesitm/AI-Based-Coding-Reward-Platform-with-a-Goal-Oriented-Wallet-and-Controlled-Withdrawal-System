@@ -3,6 +3,7 @@ const router = express.Router();
 const Problem = require('../models/Problem');
 const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
+const { aiLimiter } = require('../middleware/rateLimiter');
 
 // GET /api/problems - List all problems with solved status for the requesting user
 router.get('/', protect, async (req, res) => {
@@ -34,14 +35,15 @@ router.get('/', protect, async (req, res) => {
 });
 
 // POST /api/problems/:id/unlock-hint - Unlock a rewarded-ad AI hint.
-// The unlock is recorded server-side so the submission route can apply the
-// +5% point bonus exactly once per problem.
-router.post('/:id/unlock-hint', protect, async (req, res) => {
+// Uses Socratic AI hint generation if code is provided.
+router.post('/:id/unlock-hint', protect, aiLimiter, async (req, res) => {
   try {
     const problem = await Problem.findById(req.params.id);
     if (!problem) {
       return res.status(404).json({ success: false, message: 'Problem not found' });
     }
+
+    const { code, language } = req.body;
 
     const user = await User.findById(req.user._id);
     const alreadyUnlocked = (user.hintUnlocks || [])
@@ -52,7 +54,12 @@ router.post('/:id/unlock-hint', protect, async (req, res) => {
       await user.save();
     }
 
-    const hintText = `Key Approach for "${problem.title}": Focus on understanding input formatting and boundary cases. Break down the problem step-by-step before writing code!`;
+    const { getSocraticHint } = require('../services/gemini');
+    let hintText = `Key Approach for "${problem.title}": Focus on understanding input formatting and boundary cases. Break down the problem step-by-step before writing code!`;
+    
+    if (code && language) {
+      hintText = await getSocraticHint(code, language, problem.title, problem.description);
+    }
 
     res.json({
       success: true,
@@ -126,6 +133,93 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
     res.json({ success: true, message: 'Problem deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to delete problem', error: error.message });
+  }
+});
+
+// POST /api/problems/:id/rubber-duck - Socratic debugging chat (never writes code)
+router.post('/:id/rubber-duck', protect, aiLimiter, async (req, res) => {
+  try {
+    const { message, code, history } = req.body;
+    if (!message) {
+      return res.status(400).json({ success: false, message: 'Message is required' });
+    }
+
+    const problem = await Problem.findById(req.params.id).select('title language description');
+    if (!problem) {
+      return res.status(404).json({ success: false, message: 'Problem not found' });
+    }
+
+    const { rubberDuckChat } = require('../services/gemini');
+    const reply = await rubberDuckChat(
+      message,
+      code || '',
+      problem.language,
+      problem.title,
+      history || []
+    );
+
+    res.json({ success: true, data: { reply } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to chat', error: error.message });
+  }
+});
+
+// POST /api/problems/:id/senior-dev-answer - Grade a Senior Dev follow-up answer
+// Awards +20 bonus points for a conceptually correct answer (once per submission)
+router.post('/:id/senior-dev-answer', protect, aiLimiter, async (req, res) => {
+  try {
+    const { question, answer } = req.body;
+    if (!question || !answer) {
+      return res.status(400).json({ success: false, message: 'Question and answer are required' });
+    }
+
+    const problem = await Problem.findById(req.params.id);
+    if (!problem) {
+      return res.status(404).json({ success: false, message: 'Problem not found' });
+    }
+
+    const { gradeSeniorDevAnswer } = require('../services/gemini');
+    const { recordTransaction } = require('../services/ledger');
+
+    const gradeResult = await gradeSeniorDevAnswer(question, answer, problem.title);
+
+    let bonusPoints = 0;
+    if (gradeResult.correct) {
+      bonusPoints = 20;
+      const user = await User.findById(req.user._id);
+      user.totalPointsEarned += bonusPoints;
+      await user.save();
+
+      // Update active goal
+      const Goal = require('../models/Goal');
+      const activeGoal = await Goal.findOne({ user: req.user._id, status: 'active' });
+      if (activeGoal) {
+        activeGoal.currentPoints += bonusPoints;
+        if (activeGoal.currentPoints >= activeGoal.targetAmount) activeGoal.status = 'completed';
+        await activeGoal.save();
+      }
+
+      await recordTransaction({
+        user: req.user._id,
+        type: 'earn',
+        amount: bonusPoints,
+        source: 'other',
+        reference: { model: 'Problem', id: problem._id },
+        description: `Senior Dev Bonus: "${problem.title}" conceptual review`,
+        metadata: { question, answer }
+      }).catch(err => console.error('Ledger senior dev failed:', err.message));
+    }
+
+    res.json({
+      success: true,
+      data: {
+        correct: gradeResult.correct,
+        feedback: gradeResult.feedback,
+        bonusPoints
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to grade answer', error: error.message });
   }
 });
 

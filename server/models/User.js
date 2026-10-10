@@ -79,6 +79,15 @@ const userSchema = new mongoose.Schema({
   lastActivityDate: {
     type: Date,
     default: null
+  },
+  // Phase 2: Gamification - Daily Quest tracking
+  dailyQuest: {
+    description: { type: String, default: 'Solve 1 coding challenge' },
+    target: { type: Number, default: 1 },
+    progress: { type: Number, default: 0 },
+    rewardPoints: { type: Number, default: 50 },
+    completed: { type: Boolean, default: false },
+    assignedAt: { type: Date, default: null }
   }
 }, {
   timestamps: true

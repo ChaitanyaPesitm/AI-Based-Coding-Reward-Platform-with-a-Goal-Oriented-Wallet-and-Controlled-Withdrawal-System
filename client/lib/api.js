@@ -60,7 +60,9 @@ export const problemsAPI = {
   create: (data) => api.post('/problems', data),
   update: (id, data) => api.put(`/problems/${id}`, data),
   delete: (id) => api.delete(`/problems/${id}`),
-  unlockHint: (id) => api.post(`/problems/${id}/unlock-hint`)
+  unlockHint: (id, data) => api.post(`/problems/${id}/unlock-hint`, data),
+  seniorDevAnswer: (id, data) => api.post(`/problems/${id}/senior-dev-answer`, data),
+  rubberDuckChat: (id, data) => api.post(`/problems/${id}/rubber-duck`, data)
 };
 
 // Submissions APIs

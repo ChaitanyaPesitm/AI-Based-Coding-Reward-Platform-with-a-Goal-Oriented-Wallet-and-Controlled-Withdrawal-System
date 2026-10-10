@@ -281,6 +281,47 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* Phase 2: Gamification - Daily Quest Card */}
+        {profile?.dailyQuest && (
+          <div className="panel-card" style={{ padding: '20px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.5px' }}>
+                  Daily Gamification
+                </span>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                  Today's Quest: {profile.dailyQuest.description}
+                </h3>
+              </div>
+              {profile.dailyQuest.completed ? (
+                <span className="badge badge-easy" style={{ fontSize: '0.85rem' }}>✓ Completed (+{profile.dailyQuest.rewardPoints} pts)</span>
+              ) : (
+                <span className="badge badge-medium" style={{ fontSize: '0.85rem' }}>
+                  Reward: +{profile.dailyQuest.rewardPoints} pts
+                </span>
+              )}
+            </div>
+
+            {!profile.dailyQuest.completed && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  <span>Progress</span>
+                  <span>{profile.dailyQuest.progress} / {profile.dailyQuest.target}</span>
+                </div>
+                <div className="progress-bar-bg" style={{ height: '8px' }}>
+                  <div
+                    className="progress-bar-fill"
+                    style={{
+                      width: `${Math.min(100, (profile.dailyQuest.progress / profile.dailyQuest.target) * 100)}%`,
+                      background: 'var(--primary)'
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Goal-Targeted Sponsored Ad */}
         {activeGoal && (
           <div style={{ marginBottom: '24px' }}>

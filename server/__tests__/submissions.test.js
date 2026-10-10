@@ -11,14 +11,18 @@ const Problem = require('../models/Problem');
 const Submission = require('../models/Submission');
 
 // Minimal app — stub out Wandbox and Gemini so tests stay offline
-jest.mock('../services/wandbox', () => ({
+jest.mock('../services/localRunner', () => ({
   executeCode: jest.fn()
 }));
 jest.mock('../services/gemini', () => ({
-  evaluateCode: jest.fn()
+  evaluateCode: jest.fn(),
+  generateEdgeCases: jest.fn().mockResolvedValue([]),
+  getSeniorDevQuestion: jest.fn().mockResolvedValue(null),
+  analyzeStyleAnomaly: jest.fn().mockReturnValue({ isAnomaly: false, reason: 'Mocked', severity: 'none' }),
+  rubberDuckChat: jest.fn().mockResolvedValue("Quack!")
 }));
 
-const { executeCode } = require('../services/wandbox');
+const { executeCode } = require('../services/localRunner');
 const { evaluateCode } = require('../services/gemini');
 
 const submissionsRouter = require('../routes/submissions');
